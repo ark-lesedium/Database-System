@@ -1,0 +1,67 @@
+{% extends "MainInterface/base.html" %}
+
+{% block title %}Dashboard - Database System{% endblock %}
+
+{% block header %}Welcome, {{ user.get_full_name|default:user.username }}{% endblock %}
+
+{% block content %}
+<div style="text-align: center;">
+    <h2>Dashboard</h2>
+    <p><strong>User Type:</strong> {{ user.userprofile.get_user_type_display }}</p>
+    <p><strong>Username:</strong> {{ user.username }}</p>
+    <p><strong>Email:</strong> {{ user.email }}</p>
+    
+    <div style="margin-top: 2rem;">
+        <a href="{% url 'logout' %}" class="button" style="text-decoration: none;">
+            <button>Logout</button>
+        </a>
+    </div>
+    
+    {% if user.userprofile.user_type == 'admin' %}
+        <div style="margin-top: 2rem; padding: 1rem; background-color: #e7f3ff; border-radius: 8px;">
+            <h3>Admin Features</h3>
+            <p>You have admin privileges with full system access.</p>
+            <div style="margin-top: 1rem;">
+                <a href="/admin/" target="_blank">
+                    <button>Django Admin Panel</button>
+                </a>
+            </div>
+            <ul style="text-align: left; margin-top: 1rem;">
+                <li>Manage users and permissions</li>
+                <li>View system statistics</li>
+                <li>Configure system settings</li>
+                <li>Access all database records</li>
+            </ul>
+        </div>
+    {% elif user.userprofile.user_type == 'lecturer' %}
+        <div style="margin-top: 2rem; padding: 1rem; background-color: #f0f8ff; border-radius: 8px;">
+            <h3>Lecturer Features</h3>
+            <p>Welcome to the lecturer portal.</p>
+            <ul style="text-align: left; margin-top: 1rem;">
+                <li>Manage courses and assignments</li>
+                <li>Grade student submissions</li>
+                <li>View student progress</li>
+                <li>Create and schedule lectures</li>
+                <li>Generate reports</li>
+            </ul>
+        </div>
+    {% elif user.userprofile.user_type == 'student' %}
+        <div style="margin-top: 2rem; padding: 1rem; background-color: #f8f9fa; border-radius: 8px;">
+            <h3>Student Features</h3>
+            <p>Welcome to the student portal.</p>
+            <ul style="text-align: left; margin-top: 1rem;">
+                <li>View enrolled courses</li>
+                <li>Submit assignments</li>
+                <li>Check grades and progress</li>
+                <li>Access course materials</li>
+                <li>View academic calendar</li>
+            </ul>
+        </div>
+    {% else %}
+        <div style="margin-top: 2rem; padding: 1rem; background-color: #fff3cd; border-radius: 8px;">
+            <h3>Account Setup Required</h3>
+            <p>Please contact an administrator to set up your user type.</p>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

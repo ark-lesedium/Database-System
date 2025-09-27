@@ -1,0 +1,63 @@
+{% extends "MainInterface/base.html" %}
+
+{% block title %}Register - Database System{% endblock %}
+
+{% block header %}Register - Database System{% endblock %}
+
+{% block content %}
+<div style="max-width: 400px; margin: 0 auto;">
+    <h2 style="text-align: center; margin-bottom: 2rem;">Register</h2>
+    
+    <form method="post">
+        {% csrf_token %}
+        
+        <div class="form-group">
+            <label for="username">Username:</label>
+            <input type="text" id="username" name="username" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="email">Email:</label>
+            <input type="email" id="email" name="email" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="first_name">First Name:</label>
+            <input type="text" id="first_name" name="first_name" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="last_name">Last Name:</label>
+            <input type="text" id="last_name" name="last_name" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="password1">Password:</label>
+            <input type="password" id="password1" name="password1" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="password2">Confirm Password:</label>
+            <input type="password" id="password2" name="password2" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="user_type">User Type:</label>
+            <select id="user_type" name="user_type" required>
+                <option value="">-- Select User Type --</option>
+                <option value="student">Student</option>
+                <option value="lecturer">Lecturer</option>
+                <option value="admin">Admin</option>
+            </select>
+        </div>
+        
+        <div class="form-group" style="text-align: center;">
+            <button type="submit">Register</button>
+        </div>
+    </form>
+    
+    <div style="text-align: center; margin-top: 2rem;">
+        <p>Already have an account? <a href="{% url 'login' %}">Login here</a></p>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,43 @@
+{% extends "MainInterface/base.html" %}
+
+{% block title %}Login - Database System{% endblock %}
+
+{% block header %}Login - Database System{% endblock %}
+
+{% block content %}
+<div style="max-width: 400px; margin: 0 auto;">
+    <h2 style="text-align: center; margin-bottom: 2rem;">Login</h2>
+    
+    <form method="post">
+        {% csrf_token %}
+        
+        <div class="form-group">
+            <label for="username">Username:</label>
+            <input type="text" id="username" name="username" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="password">Password:</label>
+            <input type="password" id="password" name="password" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="user_type">Login as:</label>
+            <select id="user_type" name="user_type" required>
+                <option value="">-- Select User Type --</option>
+                <option value="student">Student</option>
+                <option value="lecturer">Lecturer</option>
+                <option value="admin">Admin</option>
+            </select>
+        </div>
+        
+        <div class="form-group" style="text-align: center;">
+            <button type="submit">Login</button>
+        </div>
+    </form>
+    
+    <div style="text-align: center; margin-top: 2rem;">
+        <p>Don't have an account? <a href="{% url 'register' %}">Register here</a></p>
+    </div>
+</div>
+{% endblock %}

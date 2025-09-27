@@ -1,0 +1,333 @@
+{% extends 'MainInterface/base.html' %}
+
+{% block title %}Student Dashboard - Database System{% endblock %}
+{% block header %}
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span>Student Dashboard</span>
+        <a href="{% url 'logout' %}" style="background-color: #dc3545; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px;">Logout</a>
+    </div>
+{% endblock %}
+
+{% block content %}
+<style>
+    .dashboard-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 20px;
+        margin-top: 20px;
+    }
+    
+    .dashboard-card {
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        border-left: 4px solid #007bff;
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    
+    .dashboard-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    
+    .card-header {
+        display: flex;
+        align-items: center;
+        margin-bottom: 15px;
+    }
+    
+    .card-icon {
+        width: 24px;
+        height: 24px;
+        margin-right: 10px;
+        background: #007bff;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-weight: bold;
+    }
+    
+    .card-title {
+        font-size: 18px;
+        font-weight: bold;
+        color: #333;
+        margin: 0;
+    }
+    
+    .card-description {
+        color: #666;
+        margin-bottom: 15px;
+        line-height: 1.4;
+    }
+    
+    .card-actions {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+    
+    .btn-primary {
+        background-color: #007bff;
+        color: white;
+        padding: 8px 16px;
+        border: none;
+        border-radius: 4px;
+        text-decoration: none;
+        font-size: 14px;
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+    
+    .btn-primary:hover {
+        background-color: #0056b3;
+    }
+    
+    .btn-secondary {
+        background-color: #6c757d;
+        color: white;
+        padding: 8px 16px;
+        border: none;
+        border-radius: 4px;
+        text-decoration: none;
+        font-size: 14px;
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+    
+    .btn-secondary:hover {
+        background-color: #545b62;
+    }
+    
+    .welcome-section {
+        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+        color: white;
+        padding: 30px;
+        border-radius: 8px;
+        margin-bottom: 30px;
+        text-align: center;
+    }
+    
+    .welcome-section h2 {
+        margin: 0 0 10px 0;
+        font-size: 28px;
+    }
+    
+    .welcome-section p {
+        margin: 0;
+        opacity: 0.9;
+        font-size: 16px;
+    }
+    
+    .stats-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-bottom: 30px;
+    }
+    
+    .stat-card {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        text-align: center;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .stat-number {
+        font-size: 32px;
+        font-weight: bold;
+        color: #007bff;
+        margin: 0;
+    }
+    
+    .stat-label {
+        color: #666;
+        margin: 5px 0 0 0;
+        font-size: 14px;
+    }
+    
+    .profile-badge, .gpa-badge, .attendance-badge {
+        border-left-color: #28a745;
+    }
+    
+    .courses-badge, .assignments-badge, .materials-badge {
+        border-left-color: #17a2b8;
+    }
+    
+    .grades-badge, .progress-badge, .calendar-badge {
+        border-left-color: #ffc107;
+    }
+    
+    .announcements-badge {
+        border-left-color: #dc3545;
+    }
+</style>
+
+<div class="welcome-section">
+    <h2>Welcome back, {{ user.first_name|default:user.username }}!</h2>
+    <p>Here's your academic dashboard with all the tools you need for success</p>
+</div>
+
+<div class="stats-row">
+    <div class="stat-card">
+        <p class="stat-number">{{ enrolled_courses_count|default:"0" }}</p>
+        <p class="stat-label">Enrolled Courses</p>
+    </div>
+    <div class="stat-card">
+        <p class="stat-number">{{ current_gpa|default:"N/A" }}</p>
+        <p class="stat-label">Current GPA</p>
+    </div>
+    <div class="stat-card">
+        <p class="stat-number">{{ pending_assignments|default:"0" }}</p>
+        <p class="stat-label">Pending Assignments</p>
+    </div>
+    <div class="stat-card">
+        <p class="stat-number">{{ attendance_percentage|default:"0" }}%</p>
+        <p class="stat-label">Attendance Rate</p>
+    </div>
+</div>
+
+<div class="dashboard-grid">
+    <!-- Profile Management -->
+    <div class="dashboard-card profile-badge">
+        <div class="card-header">
+            <div class="card-icon">👤</div>
+            <h3 class="card-title">Profile Management</h3>
+        </div>
+        
+        <div class="card-actions">
+            <a href="#" class="btn-primary">Edit Profile</a>
+            <a href="#" class="btn-secondary">Change Password</a>
+        </div>
+    </div>
+
+    <!-- Course Registration -->
+    <div class="dashboard-card courses-badge">
+        <div class="card-header">
+            <div class="card-icon">📚</div>
+            <h3 class="card-title">Course Registration</h3>
+        </div>
+       
+        <div class="card-actions">
+            <a href="#" class="btn-primary">Browse Courses</a>
+            <a href="#" class="btn-secondary">Registration Status</a>
+        </div>
+    </div>
+
+    <!-- Enrolled Courses -->
+    <div class="dashboard-card courses-badge">
+        <div class="card-header">
+            <div class="card-icon">📖</div>
+            <h3 class="card-title">Enrolled Courses</h3>
+        </div>
+       
+        <div class="card-actions">
+            <a href="#" class="btn-primary">My Courses</a>
+            <a href="#" class="btn-secondary">Course Details</a>
+        </div>
+    </div>
+
+    <!-- Grades & Results -->
+    <div class="dashboard-card grades-badge">
+        <div class="card-header">
+            <div class="card-icon">📊</div>
+            <h3 class="card-title">Grades & Results</h3>
+        </div>
+       
+        <div class="card-actions">
+            <a href="#" class="btn-primary">View Grades</a>
+            <a href="#" class="btn-secondary">Grade History</a>
+        </div>
+    </div>
+
+    <!-- Academic Calendar -->
+    <div class="dashboard-card calendar-badge">
+        <div class="card-header">
+            <div class="card-icon">📅</div>
+            <h3 class="card-title">Academic Calendar</h3>
+        </div>
+       
+        <div class="card-actions">
+            <a href="#" class="btn-primary">View Calendar</a>
+            <a href="#" class="btn-secondary">Exam Schedule</a>
+        </div>
+    </div>
+
+    <!-- Announcements -->
+    <div class="dashboard-card announcements-badge">
+        <div class="card-header">
+            <div class="card-icon">📢</div>
+            <h3 class="card-title">Announcements</h3>
+        </div>
+     
+        <div class="card-actions">
+            <a href="#" class="btn-primary">View All</a>
+            <a href="#" class="btn-secondary">Mark as Read</a>
+        </div>
+    </div>
+
+    <!-- Study Materials -->
+    <div class="dashboard-card materials-badge">
+        <div class="card-header">
+            <div class="card-icon">📋</div>
+            <h3 class="card-title">Study Materials</h3>
+        </div>
+       
+        <div class="card-actions">
+            <a href="#" class="btn-primary">Browse Materials</a>
+            <a href="#" class="btn-secondary">Recent Uploads</a>
+        </div>
+    </div>
+
+    <!-- Assignments -->
+    <div class="dashboard-card assignments-badge">
+        <div class="card-header">
+            <div class="card-icon">📝</div>
+            <h3 class="card-title">Assignments</h3>
+        </div>
+     
+        <div class="card-actions">
+            <a href="#" class="btn-primary">Submit Assignment</a>
+            <a href="#" class="btn-secondary">View Submissions</a>
+        </div>
+    </div>
+
+    <!-- Attendance Records -->
+    <div class="dashboard-card attendance-badge">
+        <div class="card-header">
+            <div class="card-icon">✅</div>
+            <h3 class="card-title">Attendance Records</h3>
+        </div>
+       
+        <div class="card-actions">
+            <a href="#" class="btn-primary">View Records</a>
+            <a href="#" class="btn-secondary">Monthly Report</a>
+        </div>
+    </div>
+
+    <!-- Academic Progress -->
+    <div class="dashboard-card progress-badge">
+        <div class="card-header">
+            <div class="card-icon">📈</div>
+            <h3 class="card-title">Academic Progress</h3>
+        </div>
+     
+        <div class="card-actions">
+            <a href="#" class="btn-primary">View Progress</a>
+            <a href="#" class="btn-secondary">Performance Report</a>
+        </div>
+    </div>
+</div>
+
+<div style="margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 8px; text-align: center;">
+    <p style="margin: 0; color: #666;">
+        Need help? <a href="#" style="color: #007bff; text-decoration: none;">Contact Support</a> | 
+        <a href="#" style="color: #007bff; text-decoration: none;">User Guide</a> | 
+        <a href="#" style="color: #007bff; text-decoration: none;">FAQ</a>
+    </p>
+</div>
+
+{% endblock %}
