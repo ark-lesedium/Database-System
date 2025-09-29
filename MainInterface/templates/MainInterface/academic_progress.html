@@ -1,0 +1,484 @@
+{% extends 'MainInterface/base.html' %}
+
+{% block title %}Academic Progress - Database System{% endblock %}
+{% block header %}
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span>Academic Progress</span>
+        <div style="display: flex; gap: 10px;">
+            <a href="{% url 'download_progress_report' %}" 
+               style="background-color: #28a745; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px; display: flex; align-items: center; gap: 5px;">
+                📄 Download Report
+            </a>
+            <a href="{% url 'student_dashboard' %}" 
+               style="background-color: #6c757d; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px;">
+                Back to Dashboard
+            </a>
+        </div>
+    </div>
+{% endblock %}
+
+{% block content %}
+<style>
+    .progress-container {
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+    
+    .overview-section {
+        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+        color: white;
+        padding: 30px;
+        border-radius: 8px;
+        margin-bottom: 30px;
+        text-align: center;
+    }
+    
+    .overview-section h2 {
+        margin: 0 0 20px 0;
+        font-size: 28px;
+    }
+    
+    .overview-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 20px;
+        margin-top: 20px;
+    }
+    
+    .overview-stat {
+        background: rgba(255,255,255,0.1);
+        padding: 15px;
+        border-radius: 8px;
+        text-align: center;
+    }
+    
+    .overview-stat-number {
+        font-size: 24px;
+        font-weight: bold;
+        margin: 0 0 5px 0;
+    }
+    
+    .overview-stat-label {
+        font-size: 14px;
+        opacity: 0.9;
+        margin: 0;
+    }
+    
+    .progress-grid {
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        gap: 30px;
+        margin-bottom: 30px;
+    }
+    
+    .courses-section {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .section-header {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 8px 8px 0 0;
+        border-left: 4px solid #007bff;
+    }
+    
+    .section-header h3 {
+        margin: 0;
+        color: #333;
+        font-size: 20px;
+    }
+    
+    .course-item {
+        padding: 20px;
+        border-bottom: 1px solid #eee;
+    }
+    
+    .course-item:last-child {
+        border-bottom: none;
+    }
+    
+    .course-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+    }
+    
+    .course-title {
+        font-size: 18px;
+        font-weight: bold;
+        color: #333;
+        margin: 0;
+    }
+    
+    .course-code {
+        color: #007bff;
+        font-weight: 500;
+        font-size: 14px;
+    }
+    
+    .progress-bar-container {
+        background: #f0f0f0;
+        border-radius: 10px;
+        height: 20px;
+        margin: 10px 0;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .progress-bar {
+        height: 100%;
+        border-radius: 10px;
+        transition: width 0.5s ease;
+        position: relative;
+    }
+    
+    .progress-bar.excellent {
+        background: linear-gradient(90deg, #28a745, #20c997);
+    }
+    
+    .progress-bar.good {
+        background: linear-gradient(90deg, #17a2b8, #20c997);
+    }
+    
+    .progress-bar.average {
+        background: linear-gradient(90deg, #ffc107, #fd7e14);
+    }
+    
+    .progress-bar.needs_improvement {
+        background: linear-gradient(90deg, #dc3545, #e83e8c);
+    }
+    
+    .progress-text {
+        position: absolute;
+        top: 50%;
+        left: 10px;
+        transform: translateY(-50%);
+        color: white;
+        font-weight: bold;
+        font-size: 12px;
+    }
+    
+    .course-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+        gap: 15px;
+        margin-top: 15px;
+    }
+    
+    .course-stat {
+        text-align: center;
+        background: #f8f9fa;
+        padding: 10px;
+        border-radius: 6px;
+    }
+    
+    .course-stat-number {
+        font-size: 18px;
+        font-weight: bold;
+        color: #007bff;
+        margin: 0 0 5px 0;
+    }
+    
+    .course-stat-label {
+        font-size: 12px;
+        color: #666;
+        margin: 0;
+    }
+    
+    .status-badge {
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: bold;
+        text-transform: uppercase;
+    }
+    
+    .status-excellent {
+        background: #d4edda;
+        color: #155724;
+    }
+    
+    .status-good {
+        background: #d1ecf1;
+        color: #0c5460;
+    }
+    
+    .status-average {
+        background: #fff3cd;
+        color: #856404;
+    }
+    
+    .status-needs_improvement {
+        background: #f8d7da;
+        color: #721c24;
+    }
+    
+    .activity-section {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .activity-item {
+        padding: 15px 20px;
+        border-bottom: 1px solid #eee;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .activity-item:last-child {
+        border-bottom: none;
+    }
+    
+    .activity-info {
+        flex: 1;
+    }
+    
+    .activity-title {
+        font-weight: 600;
+        color: #333;
+        margin: 0 0 5px 0;
+        font-size: 14px;
+    }
+    
+    .activity-meta {
+        color: #666;
+        font-size: 12px;
+        margin: 0;
+    }
+    
+    .activity-grade {
+        background: #e8f5e8;
+        color: #2d5a2d;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-weight: bold;
+        font-size: 12px;
+    }
+    
+    .gpa-display {
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        text-align: center;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+    }
+    
+    .gpa-number {
+        font-size: 48px;
+        font-weight: bold;
+        color: #007bff;
+        margin: 0;
+    }
+    
+    .gpa-label {
+        color: #666;
+        font-size: 16px;
+        margin: 5px 0 0 0;
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 40px;
+        color: #666;
+    }
+    
+    .empty-state i {
+        font-size: 48px;
+        margin-bottom: 15px;
+        color: #ccc;
+    }
+    
+    @media (max-width: 768px) {
+        .progress-grid {
+            grid-template-columns: 1fr;
+        }
+        
+        .overview-stats {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+</style>
+
+<div class="progress-container">
+    <!-- Overview Section -->
+    <div class="overview-section">
+        <h2>📈 Academic Progress Overview</h2>
+        <p>Track your academic journey and performance across all courses</p>
+        
+        <div class="overview-stats">
+            <div class="overview-stat">
+                <p class="overview-stat-number">{{ overall_stats.gpa }}</p>
+                <p class="overview-stat-label">Current GPA</p>
+            </div>
+            <div class="overview-stat">
+                <p class="overview-stat-number">{{ overall_stats.completion_percentage }}%</p>
+                <p class="overview-stat-label">Completion Rate</p>
+            </div>
+            <div class="overview-stat">
+                <p class="overview-stat-number">{{ overall_stats.completed_credits }}/{{ overall_stats.total_credits }}</p>
+                <p class="overview-stat-label">Credits Completed</p>
+            </div>
+            <div class="overview-stat">
+                <p class="overview-stat-number">{{ overall_stats.completed_assignments }}/{{ overall_stats.total_assignments }}</p>
+                <p class="overview-stat-label">Assignments Done</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="progress-grid">
+        <!-- Course Progress -->
+        <div class="courses-section">
+            <div class="section-header">
+                <h3>📚 Course Progress</h3>
+            </div>
+            
+            {% if course_progress %}
+                {% for course_data in course_progress %}
+                <div class="course-item">
+                    <div class="course-header">
+                        <div>
+                            <h4 class="course-title">{{ course_data.course.course_name }}</h4>
+                            <p class="course-code">{{ course_data.course.course_code }} • {{ course_data.course.credits }} Credits</p>
+                        </div>
+                        <span class="status-badge status-{{ course_data.progress_status }}">
+                            {% if course_data.progress_status == 'excellent' %}Excellent
+                            {% elif course_data.progress_status == 'good' %}Good
+                            {% elif course_data.progress_status == 'average' %}Average
+                            {% else %}Needs Improvement
+                            {% endif %}
+                        </span>
+                    </div>
+                    
+                    <div class="progress-bar-container">
+                        <div class="progress-bar {{ course_data.progress_status }}" style="width: {{ course_data.progress_percentage }}%;">
+                            <span class="progress-text">{{ course_data.progress_percentage }}%</span>
+                        </div>
+                    </div>
+                    
+                    <div class="course-stats">
+                        <div class="course-stat">
+                            <p class="course-stat-number">{{ course_data.completed_assignments }}/{{ course_data.total_assignments }}</p>
+                            <p class="course-stat-label">Assignments</p>
+                        </div>
+                        <div class="course-stat">
+                            <p class="course-stat-number">{{ course_data.average_grade }}%</p>
+                            <p class="course-stat-label">Avg Grade</p>
+                        </div>
+                        <div class="course-stat">
+                            <p class="course-stat-number">{{ course_data.final_grade|default:"N/A" }}</p>
+                            <p class="course-stat-label">Final Grade</p>
+                        </div>
+                        <div class="course-stat">
+                            <p class="course-stat-number">{{ course_data.pending_assignments }}</p>
+                            <p class="course-stat-label">Pending</p>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="empty-state">
+                    <div>📚</div>
+                    <p>No courses enrolled</p>
+                    <p><a href="{% url 'browse_courses' %}">Browse available courses</a></p>
+                </div>
+            {% endif %}
+        </div>
+
+        <!-- Sidebar -->
+        <div>
+            <!-- GPA Display -->
+            <div class="gpa-display">
+                <p class="gpa-number">{{ overall_stats.gpa }}</p>
+                <p class="gpa-label">Cumulative GPA</p>
+            </div>
+
+            <!-- Recent Activity -->
+            <div class="activity-section">
+                <div class="section-header">
+                    <h3>📋 Recent Activity</h3>
+                </div>
+                
+                {% if recent_grades or recent_submissions %}
+                    {% for grade in recent_grades|slice:":5" %}
+                    <div class="activity-item">
+                        <div class="activity-info">
+                            <p class="activity-title">{{ grade.description|default:"Grade Received" }}</p>
+                            <p class="activity-meta">{{ grade.course.course_code }} • {{ grade.date_graded|date:"M d, Y" }}</p>
+                        </div>
+                        <div class="activity-grade">{{ grade.grade_value }}</div>
+                    </div>
+                    {% endfor %}
+                    
+                    {% for submission in recent_submissions|slice:":3" %}
+                    <div class="activity-item">
+                        <div class="activity-info">
+                            <p class="activity-title">{{ submission.assignment.title }}</p>
+                            <p class="activity-meta">{{ submission.assignment.course.course_code }} • {{ submission.submitted_at|date:"M d, Y" }}</p>
+                        </div>
+                        <div style="background: #d1ecf1; color: #0c5460; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 12px;">
+                            Submitted
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="empty-state">
+                        <div>📋</div>
+                        <p>No recent activity</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Performance Insights -->
+    <div style="background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); padding: 20px; margin-top: 20px;">
+        <h3 style="margin: 0 0 15px 0; color: #333;">💡 Performance Insights</h3>
+        
+        {% if overall_stats.gpa >= 3.5 %}
+            <div style="background: #d4edda; border-left: 4px solid #28a745; padding: 15px; margin-bottom: 15px;">
+                <strong>Excellent Performance!</strong> You're maintaining a high GPA of {{ overall_stats.gpa }}. Keep up the great work!
+            </div>
+        {% elif overall_stats.gpa >= 3.0 %}
+            <div style="background: #d1ecf1; border-left: 4px solid #17a2b8; padding: 15px; margin-bottom: 15px;">
+                <strong>Good Progress!</strong> Your GPA of {{ overall_stats.gpa }} shows solid academic performance. Consider focusing on areas for improvement.
+            </div>
+        {% elif overall_stats.gpa >= 2.0 %}
+            <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin-bottom: 15px;">
+                <strong>Room for Improvement.</strong> Your GPA of {{ overall_stats.gpa }} suggests you should focus more on your studies and seek help if needed.
+            </div>
+        {% elif overall_stats.gpa > 0 %}
+            <div style="background: #f8d7da; border-left: 4px solid #dc3545; padding: 15px; margin-bottom: 15px;">
+                <strong>Needs Attention!</strong> Your GPA of {{ overall_stats.gpa }} requires immediate attention. Consider meeting with academic advisors.
+            </div>
+        {% endif %}
+        
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+            <div style="background: #f8f9fa; padding: 15px; border-radius: 6px;">
+                <h4 style="margin: 0 0 10px 0; color: #333;">📊 Assignment Completion</h4>
+                <p style="margin: 0; color: #666;">
+                    {{ overall_stats.completed_assignments }} out of {{ overall_stats.total_assignments }} assignments completed
+                    {% if overall_stats.total_assignments > 0 %}
+                        ({{ overall_stats.completed_assignments|floatformat:0 }}/{{ overall_stats.total_assignments }} = 
+                        {% widthratio overall_stats.completed_assignments overall_stats.total_assignments 100 %}%)
+                    {% endif %}
+                </p>
+            </div>
+            
+            <div style="background: #f8f9fa; padding: 15px; border-radius: 6px;">
+                <h4 style="margin: 0 0 10px 0; color: #333;">🎯 Credit Progress</h4>
+                <p style="margin: 0; color: #666;">
+                    {{ overall_stats.completion_percentage }}% of total credits completed
+                    ({{ overall_stats.completed_credits }}/{{ overall_stats.total_credits }} credits)
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

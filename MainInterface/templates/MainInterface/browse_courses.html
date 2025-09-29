@@ -1,0 +1,511 @@
+{% extends 'MainInterface/base.html' %}
+{% load course_filters %}
+
+{% block title %}Browse Courses - Database System{% endblock %}
+{% block header %}
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span>Browse Courses</span>
+        <div>
+            {% if user.userprofile.user_type == 'student' %}
+                <a href="{% url 'student_dashboard' %}" style="background-color: #6c757d; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px; margin-right: 10px;">Back to Dashboard</a>
+            {% else %}
+                <a href="{% url 'dashboard' %}" style="background-color: #6c757d; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px; margin-right: 10px;">Back to Dashboard</a>
+            {% endif %}
+            <a href="{% url 'logout' %}" style="background-color: #dc3545; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px;">Logout</a>
+        </div>
+    </div>
+{% endblock %}
+
+{% block content %}
+<style>
+    .courses-container {
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+    
+    .search-filter-section {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+    }
+    
+    .search-form {
+        display: grid;
+        grid-template-columns: 1fr auto auto auto;
+        gap: 15px;
+        align-items: end;
+    }
+    
+    .form-group {
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .form-label {
+        font-weight: bold;
+        margin-bottom: 5px;
+        color: #333;
+    }
+    
+    .form-input, .form-select {
+        padding: 10px;
+        border: 2px solid #e9ecef;
+        border-radius: 6px;
+        font-size: 14px;
+        transition: border-color 0.3s;
+    }
+    
+    .form-input:focus, .form-select:focus {
+        outline: none;
+        border-color: #007bff;
+    }
+    
+    .btn {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 6px;
+        font-size: 14px;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        transition: all 0.3s;
+    }
+    
+    .btn-primary {
+        background-color: #007bff;
+        color: white;
+    }
+    
+    .btn-primary:hover {
+        background-color: #0056b3;
+        transform: translateY(-1px);
+    }
+    
+    .btn-secondary {
+        background-color: #6c757d;
+        color: white;
+    }
+    
+    .btn-secondary:hover {
+        background-color: #545b62;
+        transform: translateY(-1px);
+    }
+    
+    .btn-success {
+        background-color: #28a745;
+        color: white;
+    }
+    
+    .btn-success:hover {
+        background-color: #218838;
+        transform: translateY(-1px);
+    }
+    
+    .btn-warning {
+        background-color: #ffc107;
+        color: #212529;
+    }
+    
+    .btn-warning:hover {
+        background-color: #e0a800;
+        transform: translateY(-1px);
+    }
+    
+    .btn-info {
+        background-color: #17a2b8;
+        color: white;
+    }
+    
+    .btn-info:hover {
+        background-color: #138496;
+        transform: translateY(-1px);
+    }
+    
+    .courses-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+        gap: 20px;
+        margin-top: 20px;
+    }
+    
+    .course-card {
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        transition: transform 0.2s, box-shadow 0.2s;
+        position: relative;
+        border-left: 4px solid #007bff;
+    }
+    
+    .course-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    
+    .course-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: start;
+        margin-bottom: 15px;
+    }
+    
+    .course-code {
+        font-size: 18px;
+        font-weight: bold;
+        color: #007bff;
+        margin: 0;
+    }
+    
+    .course-credits {
+        background: #e9ecef;
+        color: #495057;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: bold;
+    }
+    
+    .course-title {
+        font-size: 16px;
+        font-weight: bold;
+        color: #333;
+        margin: 0 0 10px 0;
+    }
+    
+    .course-lecturer {
+        color: #666;
+        font-size: 14px;
+        margin-bottom: 10px;
+    }
+    
+    .course-description {
+        color: #666;
+        font-size: 14px;
+        line-height: 1.4;
+        margin-bottom: 15px;
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+    
+    .course-meta {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+        font-size: 12px;
+        color: #666;
+    }
+    
+    .course-level, .course-semester {
+        background: #f8f9fa;
+        padding: 4px 8px;
+        border-radius: 4px;
+        border: 1px solid #dee2e6;
+    }
+    
+    .enrollment-info {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+        font-size: 14px;
+    }
+    
+    .enrollment-count {
+        color: #666;
+    }
+    
+    .enrollment-status {
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: bold;
+    }
+    
+    .status-available {
+        background: #d4edda;
+        color: #155724;
+    }
+    
+    .status-full {
+        background: #f8d7da;
+        color: #721c24;
+    }
+    
+    .status-enrolled {
+        background: #cce5ff;
+        color: #004085;
+    }
+    
+    .course-actions {
+        display: flex;
+        gap: 10px;
+        justify-content: flex-end;
+    }
+    
+    .stats-section {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 15px;
+        margin-bottom: 20px;
+    }
+    
+    .stat-card {
+        background: white;
+        padding: 15px;
+        border-radius: 8px;
+        text-align: center;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .stat-number {
+        font-size: 24px;
+        font-weight: bold;
+        color: #007bff;
+        margin: 0;
+    }
+    
+    .stat-label {
+        color: #666;
+        margin: 5px 0 0 0;
+        font-size: 12px;
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .empty-icon {
+        font-size: 64px;
+        margin-bottom: 20px;
+    }
+    
+    .empty-title {
+        font-size: 24px;
+        color: #333;
+        margin-bottom: 10px;
+    }
+    
+    .empty-description {
+        color: #666;
+        margin-bottom: 20px;
+    }
+    
+    .alert {
+        padding: 15px;
+        border-radius: 6px;
+        margin-bottom: 20px;
+    }
+    
+    .alert-success {
+        background-color: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+    }
+    
+    .alert-error {
+        background-color: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+    }
+    
+    .alert-warning {
+        background-color: #fff3cd;
+        color: #856404;
+        border: 1px solid #ffeaa7;
+    }
+    
+    @media (max-width: 768px) {
+        .search-form {
+            grid-template-columns: 1fr;
+        }
+        
+        .courses-grid {
+            grid-template-columns: 1fr;
+        }
+        
+        .course-actions {
+            flex-direction: column;
+        }
+        
+        .enrollment-info {
+            flex-direction: column;
+            gap: 10px;
+            align-items: flex-start;
+        }
+    }
+</style>
+
+<div class="courses-container">
+    <!-- Display Messages -->
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{% if message.tags == 'error' %}error{% else %}{{ message.tags }}{% endif %}">
+                {{ message }}
+            </div>
+        {% endfor %}
+    {% endif %}
+    
+    <!-- Statistics -->
+    <div class="stats-section">
+        <div class="stat-card">
+            <p class="stat-number">{{ total_courses }}</p>
+            <p class="stat-label">Total Courses</p>
+        </div>
+        <div class="stat-card">
+            <p class="stat-number">{{ available_courses }}</p>
+            <p class="stat-label">Available</p>
+        </div>
+        <div class="stat-card">
+            <p class="stat-number">{{ enrolled_count }}</p>
+            <p class="stat-label">My Enrollments</p>
+        </div>
+        <div class="stat-card">
+            <p class="stat-number">{{ pending_count }}</p>
+            <p class="stat-label">Pending</p>
+        </div>
+    </div>
+    
+    <!-- Search and Filter -->
+    <div class="search-filter-section">
+        <form method="GET" class="search-form">
+            <div class="form-group">
+                <label for="search" class="form-label">Search Courses</label>
+                <input 
+                    type="text" 
+                    id="search" 
+                    name="search" 
+                    class="form-input" 
+                    placeholder="Course code or name..."
+                    value="{{ request.GET.search }}"
+                >
+            </div>
+            
+            <div class="form-group">
+                <label for="level" class="form-label">Level</label>
+                <select id="level" name="level" class="form-select">
+                    <option value="">All Levels</option>
+                    <option value="100" {% if request.GET.level == '100' %}selected{% endif %}>100 Level</option>
+                    <option value="200" {% if request.GET.level == '200' %}selected{% endif %}>200 Level</option>
+                    <option value="300" {% if request.GET.level == '300' %}selected{% endif %}>300 Level</option>
+                    <option value="400" {% if request.GET.level == '400' %}selected{% endif %}>400 Level</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="semester" class="form-label">Semester</label>
+                <select id="semester" name="semester" class="form-select">
+                    <option value="">All Semesters</option>
+                    <option value="1" {% if request.GET.semester == '1' %}selected{% endif %}>Semester 1</option>
+                    <option value="2" {% if request.GET.semester == '2' %}selected{% endif %}>Semester 2</option>
+                    <option value="3" {% if request.GET.semester == '3' %}selected{% endif %}>Summer Session</option>
+                </select>
+            </div>
+            
+            <button type="submit" class="btn btn-primary">
+                🔍 Search
+            </button>
+        </form>
+    </div>
+    
+    <!-- Courses Grid -->
+    {% if courses %}
+        <div class="courses-grid">
+            {% for course in courses %}
+                <div class="course-card">
+                    <div class="course-header">
+                        <h3 class="course-code">{{ course.course_code }}</h3>
+                        <span class="course-credits">{{ course.credits }} Credits</span>
+                    </div>
+                    
+                    <h4 class="course-title">{{ course.course_name }}</h4>
+                    <p class="course-lecturer">👨‍🏫 {{ course.get_lecturer_name }}</p>
+                    <p class="course-description">{{ course.description }}</p>
+                    
+                    <div class="course-meta">
+                        <span class="course-level">{{ course.get_level_display }}</span>
+                        <span class="course-semester">{{ course.get_semester_display }}</span>
+                    </div>
+                    
+                    <div class="enrollment-info">
+                        <span class="enrollment-count">
+                            {{ course.get_enrolled_count }}/{{ course.max_students }} students
+                        </span>
+                        
+                        {% with enrollment_status=user|get_enrollment_status:course %}
+                            {% if enrollment_status == 'enrolled' %}
+                                <span class="enrollment-status status-enrolled">Enrolled</span>
+                            {% elif enrollment_status == 'pending' %}
+                                <span class="enrollment-status status-warning">Pending</span>
+                            {% elif enrollment_status == 'waitlisted' %}
+                                <span class="enrollment-status status-warning">Waitlisted</span>
+                            {% elif course.has_space %}
+                                <span class="enrollment-status status-available">Available</span>
+                            {% else %}
+                                <span class="enrollment-status status-full">Full</span>
+                            {% endif %}
+                        {% endwith %}
+                    </div>
+                    
+                    <div class="course-actions">
+                        {% with enrollment_status=user|get_enrollment_status:course %}
+                            {% if enrollment_status == 'enrolled' %}
+                                <a href="{% url 'drop_course' course.id %}" class="btn btn-warning" onclick="return confirm('Are you sure you want to drop this course?')">
+                                    ❌ Drop Course
+                                </a>
+                            {% elif enrollment_status == 'pending' %}
+                                <a href="{% url 'cancel_enrollment' course.id %}" class="btn btn-secondary" onclick="return confirm('Cancel your enrollment request?')">
+                                    ❌ Cancel Request
+                                </a>
+                            {% elif enrollment_status == 'waitlisted' %}
+                                <span class="btn btn-info" style="cursor: default;">
+                                    ⏳ Waitlisted
+                                </span>
+                            {% elif course.has_space %}
+                                <a href="{% url 'enroll_course' course.id %}" class="btn btn-success">
+                                    ✅ Enroll
+                                </a>
+                            {% else %}
+                                <a href="{% url 'join_waitlist' course.id %}" class="btn btn-warning">
+                                    ⏳ Join Waitlist
+                                </a>
+                            {% endif %}
+                        {% endwith %}
+                        
+                        <a href="{% url 'course_detail' course.id %}" class="btn btn-info">
+                            📖 View Details
+                        </a>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="empty-state">
+            <div class="empty-icon">📚</div>
+            <h2 class="empty-title">No Courses Found</h2>
+            <p class="empty-description">
+                {% if request.GET.search or request.GET.level or request.GET.semester %}
+                    No courses match your search criteria. Try adjusting your filters.
+                {% else %}
+                    No courses are currently available for enrollment.
+                {% endif %}
+            </p>
+            {% if request.GET.search or request.GET.level or request.GET.semester %}
+                <a href="{% url 'browse_courses' %}" class="btn btn-primary">Clear Filters</a>
+            {% endif %}
+        </div>
+    {% endif %}
+</div>
+
+{% endblock %}

@@ -1,0 +1,454 @@
+{% extends 'MainInterface/base.html' %}
+
+{% block title %}Manage Courses - Database System{% endblock %}
+{% block header %}
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span>Course Management</span>
+        <div>
+            <a href="{% url 'lecturer_dashboard' %}" class="btn btn-secondary">Back to Dashboard</a>
+            <a href="{% url 'logout' %}" class="btn btn-danger">Logout</a>
+        </div>
+    </div>
+{% endblock %}
+
+{% block content %}
+<style>
+    .manage-container {
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+    
+    .btn {
+        padding: 8px 16px;
+        border-radius: 4px;
+        text-decoration: none;
+        font-size: 14px;
+        margin-right: 10px;
+        display: inline-block;
+    }
+    
+    .btn-secondary {
+        background-color: #6c757d;
+        color: white;
+    }
+    
+    .btn-danger {
+        background-color: #dc3545;
+        color: white;
+    }
+    
+    .action-buttons {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+    }
+    
+    .btn {
+        padding: 12px 20px;
+        border: none;
+        border-radius: 6px;
+        font-size: 14px;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        transition: all 0.3s;
+        font-weight: 500;
+    }
+    
+    .btn-primary {
+        background-color: #28a745;
+        color: white;
+    }
+    
+    .btn-primary:hover {
+        background-color: #218838;
+        transform: translateY(-1px);
+    }
+    
+    .btn-secondary {
+        background-color: #6c757d;
+        color: white;
+    }
+    
+    .btn-secondary:hover {
+        background-color: #545b62;
+        transform: translateY(-1px);
+    }
+    
+    .btn-warning {
+        background-color: #ffc107;
+        color: #212529;
+    }
+    
+    .btn-warning:hover {
+        background-color: #e0a800;
+        transform: translateY(-1px);
+    }
+    
+    .btn-danger {
+        background-color: #dc3545;
+        color: white;
+    }
+    
+    .btn-danger:hover {
+        background-color: #c82333;
+        transform: translateY(-1px);
+    }
+    
+    .btn-info {
+        background-color: #17a2b8;
+        color: white;
+    }
+    
+    .btn-info:hover {
+        background-color: #138496;
+        transform: translateY(-1px);
+    }
+    
+    .btn-small {
+        padding: 6px 12px;
+        font-size: 12px;
+    }
+    
+    .courses-table {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        overflow: hidden;
+    }
+    
+    .table-header {
+        background: #28a745;
+        color: white;
+        padding: 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .table-title {
+        font-size: 18px;
+        font-weight: bold;
+        margin: 0;
+    }
+    
+    .course-count {
+        background: rgba(255,255,255,0.2);
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 14px;
+    }
+    
+    table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    
+    th, td {
+        padding: 15px;
+        text-align: left;
+        border-bottom: 1px solid #dee2e6;
+    }
+    
+    th {
+        background-color: #f8f9fa;
+        font-weight: bold;
+        color: #333;
+    }
+    
+    tr:hover {
+        background-color: #f8f9fa;
+    }
+    
+    .course-code {
+        font-weight: bold;
+        color: #28a745;
+    }
+    
+    .course-status {
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: bold;
+    }
+    
+    .status-active {
+        background: #d4edda;
+        color: #155724;
+    }
+    
+    .status-inactive {
+        background: #f8d7da;
+        color: #721c24;
+    }
+    
+    .status-archived {
+        background: #e2e3e5;
+        color: #6c757d;
+    }
+    
+    .enrollment-stats {
+        font-size: 12px;
+        color: #666;
+    }
+    
+    .stats-full {
+        color: #dc3545;
+        font-weight: bold;
+    }
+    
+    .stats-available {
+        color: #28a745;
+        font-weight: bold;
+    }
+    
+    .action-buttons-cell {
+        white-space: nowrap;
+    }
+    
+    .action-buttons-cell .btn {
+        margin-right: 5px;
+        margin-bottom: 5px;
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .empty-icon {
+        font-size: 64px;
+        margin-bottom: 20px;
+    }
+    
+    .empty-title {
+        font-size: 24px;
+        color: #333;
+        margin-bottom: 10px;
+    }
+    
+    .empty-description {
+        color: #666;
+        margin-bottom: 20px;
+    }
+    
+    .alert {
+        padding: 15px;
+        border-radius: 6px;
+        margin-bottom: 20px;
+    }
+    
+    .alert-success {
+        background-color: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+    }
+    
+    .alert-error {
+        background-color: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+    }
+    
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-bottom: 20px;
+    }
+    
+    .stat-card {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        text-align: center;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .stat-number {
+        font-size: 28px;
+        font-weight: bold;
+        color: #28a745;
+        margin: 0;
+    }
+    
+    .stat-label {
+        color: #666;
+        margin: 5px 0 0 0;
+        font-size: 14px;
+    }
+    
+    @media (max-width: 768px) {
+        .action-buttons {
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        table {
+            font-size: 14px;
+        }
+        
+        th, td {
+            padding: 10px 8px;
+        }
+        
+        .action-buttons-cell .btn {
+            padding: 4px 8px;
+            font-size: 10px;
+        }
+        
+        .stats-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+</style>
+
+<div class="manage-container">
+    <!-- Display Messages -->
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{% if message.tags == 'error' %}error{% else %}{{ message.tags }}{% endif %}">
+                {{ message }}
+            </div>
+        {% endfor %}
+    {% endif %}
+    
+    <!-- Statistics -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <p class="stat-number">{{ total_courses }}</p>
+            <p class="stat-label">Total Courses</p>
+        </div>
+        <div class="stat-card">
+            <p class="stat-number">{{ active_courses }}</p>
+            <p class="stat-label">Active Courses</p>
+        </div>
+        <div class="stat-card">
+            <p class="stat-number">{{ total_students }}</p>
+            <p class="stat-label">Total Enrollments</p>
+        </div>
+        <div class="stat-card">
+            <p class="stat-number">{{ pending_enrollments }}</p>
+            <p class="stat-label">Pending Approvals</p>
+        </div>
+    </div>
+    
+    <!-- Action Buttons -->
+    <div class="action-buttons">
+        <h2 style="margin: 0; color: #333;">My Courses</h2>
+        <div>
+            <a href="{% url 'add_course' %}" class="btn btn-primary">
+                ➕ Add New Course
+            </a>
+            <a href="{% url 'browse_courses' %}" class="btn btn-secondary">
+                👁️ View as Student
+            </a>
+        </div>
+    </div>
+    
+    <!-- Courses Table -->
+    {% if courses %}
+        <div class="courses-table">
+            <div class="table-header">
+                <h3 class="table-title">Course Management</h3>
+                <span class="course-count">{{ courses.count }} Course{{ courses.count|pluralize }}</span>
+            </div>
+            
+            <table>
+                <thead>
+                    <tr>
+                        <th>Course Code</th>
+                        <th>Course Name</th>
+                        <th>Level/Semester</th>
+                        <th>Credits</th>
+                        <th>Enrollments</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for course in courses %}
+                        <tr>
+                            <td>
+                                <span class="course-code">{{ course.course_code }}</span>
+                            </td>
+                            <td>
+                                <strong>{{ course.course_name }}</strong>
+                                <br>
+                                <small style="color: #666;">{{ course.description|truncatechars:50 }}</small>
+                            </td>
+                            <td>
+                                {{ course.get_level_display }}<br>
+                                <small>{{ course.get_semester_display }}</small>
+                            </td>
+                            <td>{{ course.credits }}</td>
+                            <td>
+                                <span class="enrollment-stats {% if course.get_enrolled_count >= course.max_students %}stats-full{% else %}stats-available{% endif %}">
+                                    {{ course.get_enrolled_count }}/{{ course.max_students }}
+                                </span>
+                                <br>
+                                <small style="color: #666;">
+                                    {{ course.pending_count }} pending
+                                </small>
+                            </td>
+                            <td>
+                                {% if course.is_active %}
+                                    <span class="course-status status-active">
+                                        Active
+                                    </span>
+                                {% else %}
+                                    <span class="course-status status-inactive">
+                                        Inactive
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td class="action-buttons-cell">
+                                <a href="{% url 'edit_course' course.id %}" class="btn btn-info btn-small">
+                                    ✏️ Edit
+                                </a>
+                                <a href="{% url 'course_enrollments' course.id %}" class="btn btn-secondary btn-small">
+                                    👥 Enrollments
+                                </a>
+                                {% if course.is_active %}
+                                    <a href="{% url 'deactivate_course' course.id %}" class="btn btn-warning btn-small" onclick="return confirm('Deactivate this course?')">
+                                        ⏸️ Deactivate
+                                    </a>
+                                {% else %}
+                                    <a href="{% url 'activate_course' course.id %}" class="btn btn-primary btn-small">
+                                        ▶️ Activate
+                                    </a>
+                                {% endif %}
+                                <a href="{% url 'delete_course' course.id %}" class="btn btn-danger btn-small" onclick="return confirm('Are you sure you want to delete this course? This action cannot be undone.')">
+                                    🗑️ Delete
+                                </a>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div class="empty-state">
+            <div class="empty-icon">📚</div>
+            <h2 class="empty-title">No Courses Yet</h2>
+            <p class="empty-description">
+                You haven't created any courses yet. Start by adding your first course.
+            </p>
+            <a href="{% url 'add_course' %}" class="btn btn-primary">
+                ➕ Add Your First Course
+            </a>
+        </div>
+    {% endif %}
+</div>
+
+{% endblock %}

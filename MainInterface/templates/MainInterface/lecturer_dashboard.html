@@ -199,8 +199,8 @@
         </div>
      
         <div class="card-actions">
-            <a href="#" class="btn-primary">Manage Courses</a>
-            <a href="#" class="btn-secondary">Create New Course</a>
+            <a href="{% url 'manage_courses' %}" class="btn-primary">Manage Courses</a>
+            <a href="{% url 'add_course' %}" class="btn-secondary">Create New Course</a>
         </div>
     </div>
 
@@ -212,8 +212,8 @@
         </div>
      
         <div class="card-actions">
-            <a href="#" class="btn-primary">View Students</a>
-            <a href="#" class="btn-secondary">Enrollment Reports</a>
+            <a href="{% url 'student_management' %}" class="btn-primary">View Students</a>
+            <a href="{% url 'download_enrollment_report' %}" class="btn-secondary">Enrollment Reports</a>
         </div>
     </div>
 
@@ -225,8 +225,8 @@
         </div>
      
         <div class="card-actions">
-            <a href="#" class="btn-primary">Create Assignment</a>
-            <a href="#" class="btn-secondary">Review Submissions</a>
+            <a href="{% url 'lecturer_assignments' %}" class="btn-primary">Manage Assignments</a>
+            <a href="/admin/MainInterface/assignment/add/" class="btn-secondary">Create Assignment</a>
         </div>
     </div>
 
@@ -290,8 +290,8 @@
         </div>
     
         <div class="card-actions">
-            <a href="#" class="btn-primary">Create Announcement</a>
-            <a href="#" class="btn-secondary">View All</a>
+            <a href="{% url 'announcements' %}" class="btn-primary">View All</a>
+            <a href="{% url 'announcements' %}" class="btn-secondary">Latest News</a>
         </div>
     </div>
 
@@ -316,7 +316,7 @@
         </div>
       
         <div class="card-actions">
-            <a href="#" class="btn-primary">Edit Profile</a>
+            <a href="{% url 'profile_management' %}" class="btn-primary">Edit Profile</a>
             <a href="#" class="btn-secondary">Change Password</a>
         </div>
     </div>

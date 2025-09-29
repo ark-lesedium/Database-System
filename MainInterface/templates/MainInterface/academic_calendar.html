@@ -1,0 +1,486 @@
+{% extends 'MainInterface/base.html' %}
+
+{% block title %}Academic Calendar{% endblock %}
+
+{% block header %}
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span>Academic Calendar</span>
+        <div>
+            <a href="{% url 'student_dashboard' %}" class="btn btn-secondary">Back to Dashboard</a>
+            <a href="{% url 'logout' %}" class="btn btn-danger">Logout</a>
+        </div>
+    </div>
+{% endblock %}
+
+{% block content %}
+<style>
+    .calendar-container {
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+    
+    .btn {
+        padding: 8px 16px;
+        border-radius: 4px;
+        text-decoration: none;
+        font-size: 14px;
+        margin-right: 10px;
+        display: inline-block;
+    }
+    
+    .btn-secondary {
+        background-color: #6c757d;
+        color: white;
+    }
+    
+    .btn-danger {
+        background-color: #dc3545;
+        color: white;
+    }
+    
+    .calendar-header {
+        display: grid;
+        grid-template-columns: 1fr 2fr 1fr;
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+    
+    .calendar-nav {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        text-align: center;
+    }
+    
+    .month-header {
+        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+        color: white;
+        padding: 30px;
+        border-radius: 8px;
+        text-align: center;
+    }
+    
+    .month-title {
+        font-size: 28px;
+        font-weight: bold;
+        margin: 0 0 10px 0;
+    }
+    
+    .year-title {
+        font-size: 16px;
+        opacity: 0.9;
+        margin: 0;
+    }
+    
+    .nav-button {
+        background: #007bff;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 5px;
+        text-decoration: none;
+        display: inline-block;
+        font-size: 14px;
+        transition: background 0.3s;
+    }
+    
+    .nav-button:hover {
+        background: #0056b3;
+        color: white;
+    }
+    
+    .calendar-content {
+        display: grid;
+        grid-template-columns: 3fr 1fr;
+        gap: 30px;
+    }
+    
+    .calendar-main {
+        background: white;
+        border-radius: 8px;
+        padding: 25px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .calendar-sidebar {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+    }
+    
+    .calendar-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 20px;
+    }
+    
+    .calendar-table th {
+        background: #f8f9fa;
+        padding: 15px 5px;
+        text-align: center;
+        font-weight: bold;
+        color: #333;
+        border: 1px solid #dee2e6;
+    }
+    
+    .calendar-table td {
+        width: 14.28%;
+        height: 120px;
+        vertical-align: top;
+        padding: 8px;
+        border: 1px solid #dee2e6;
+        position: relative;
+    }
+    
+    .calendar-date {
+        font-weight: bold;
+        margin-bottom: 5px;
+        color: #333;
+    }
+    
+    .calendar-date.today {
+        background: #007bff;
+        color: white;
+        border-radius: 50%;
+        width: 25px;
+        height: 25px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 0 5px 0;
+    }
+    
+    .calendar-date.other-month {
+        color: #999;
+    }
+    
+    .event {
+        background: #e3f2fd;
+        border-left: 3px solid #2196f3;
+        padding: 2px 4px;
+        margin: 2px 0;
+        font-size: 11px;
+        border-radius: 2px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    
+    .event.semester_start, .event.semester_end {
+        background: #e8f5e8;
+        border-left-color: #4caf50;
+    }
+    
+    .event.exam_period {
+        background: #fff3e0;
+        border-left-color: #ff9800;
+    }
+    
+    .event.holiday {
+        background: #fce4ec;
+        border-left-color: #e91e63;
+    }
+    
+    .event.registration_start, .event.registration_end {
+        background: #f3e5f5;
+        border-left-color: #9c27b0;
+    }
+    
+    .event.deadline {
+        background: #ffebee;
+        border-left-color: #f44336;
+    }
+    
+    .sidebar-card {
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .card-title {
+        font-size: 18px;
+        font-weight: bold;
+        color: #333;
+        margin: 0 0 15px 0;
+        padding-bottom: 8px;
+        border-bottom: 2px solid #007bff;
+    }
+    
+    .upcoming-event {
+        padding: 10px 0;
+        border-bottom: 1px solid #f0f0f0;
+    }
+    
+    .upcoming-event:last-child {
+        border-bottom: none;
+    }
+    
+    .event-date {
+        font-size: 12px;
+        color: #666;
+        margin-bottom: 3px;
+    }
+    
+    .event-title {
+        font-weight: 500;
+        color: #333;
+        margin-bottom: 2px;
+    }
+    
+    .event-type-badge {
+        display: inline-block;
+        padding: 2px 6px;
+        border-radius: 10px;
+        font-size: 10px;
+        text-transform: uppercase;
+        color: white;
+        background: #007bff;
+    }
+    
+    .event-type-badge.semester_start,
+    .event-type-badge.semester_end {
+        background: #4caf50;
+    }
+    
+    .event-type-badge.exam_period {
+        background: #ff9800;
+    }
+    
+    .event-type-badge.holiday {
+        background: #e91e63;
+    }
+    
+    .event-type-badge.registration_start,
+    .event-type-badge.registration_end {
+        background: #9c27b0;
+    }
+    
+    .event-type-badge.deadline {
+        background: #f44336;
+    }
+    
+    .legend {
+        margin-top: 15px;
+    }
+    
+    .legend-item {
+        display: flex;
+        align-items: center;
+        margin-bottom: 8px;
+    }
+    
+    .legend-color {
+        width: 12px;
+        height: 12px;
+        border-radius: 2px;
+        margin-right: 8px;
+    }
+    
+    .legend-text {
+        font-size: 12px;
+        color: #666;
+    }
+    
+    .empty-calendar {
+        text-align: center;
+        padding: 40px;
+        color: #666;
+    }
+    
+    .empty-icon {
+        font-size: 48px;
+        margin-bottom: 15px;
+        opacity: 0.5;
+    }
+    
+    @media (max-width: 768px) {
+        .calendar-content {
+            grid-template-columns: 1fr;
+        }
+        
+        .calendar-header {
+            grid-template-columns: 1fr;
+            gap: 15px;
+        }
+        
+        .calendar-table td {
+            height: 80px;
+            padding: 4px;
+        }
+        
+        .event {
+            font-size: 9px;
+            padding: 1px 2px;
+        }
+    }
+</style>
+
+<div class="calendar-container">
+    <!-- Display Messages -->
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{% if message.tags == 'error' %}error{% else %}{{ message.tags }}{% endif %}">
+                {{ message }}
+            </div>
+        {% endfor %}
+    {% endif %}
+    
+    <!-- Calendar Header -->
+    <div class="calendar-header">
+        <!-- Previous Month Navigation -->
+        <div class="calendar-nav">
+            <a href="?year={{ prev_year }}&month={{ prev_month }}" class="nav-button">
+                ← Previous
+            </a>
+        </div>
+        
+        <!-- Current Month Display -->
+        <div class="month-header">
+            <h1 class="month-title">{{ month_name }}</h1>
+            <p class="year-title">{{ year }}</p>
+        </div>
+        
+        <!-- Next Month Navigation -->
+        <div class="calendar-nav">
+            <a href="?year={{ next_year }}&month={{ next_month }}" class="nav-button">
+                Next →
+            </a>
+        </div>
+    </div>
+    
+    <!-- Main Calendar Content -->
+    <div class="calendar-content">
+        <!-- Calendar Grid -->
+        <div class="calendar-main">
+            <table class="calendar-table">
+                <thead>
+                    <tr>
+                        <th>Sunday</th>
+                        <th>Monday</th>
+                        <th>Tuesday</th>
+                        <th>Wednesday</th>
+                        <th>Thursday</th>
+                        <th>Friday</th>
+                        <th>Saturday</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for week in calendar %}
+                        <tr>
+                            {% for day in week %}
+                                <td>
+                                    {% if day == 0 %}
+                                        <!-- Empty cell -->
+                                    {% else %}
+                                        <div class="calendar-date {% if day == today.day and year == today.year and month == today.month %}today{% endif %}">
+                                            {{ day }}
+                                        </div>
+                                        
+                                        <!-- Display events for this day -->
+                                        {% for event in events_by_date|default_if_none:'' %}
+                                            {% for day_event in events_by_date|default_if_none:'' %}
+                                                {% if forloop.parentloop.counter0 == day %}
+                                                    {% for event in day_event %}
+                                                        <div class="event {{ event.event_type }}" title="{{ event.title }}">
+                                                            {{ event.title|truncatechars:15 }}
+                                                        </div>
+                                                    {% endfor %}
+                                                {% endif %}
+                                            {% endfor %}
+                                        {% endfor %}
+                                        
+                                        <!-- Events for this day -->
+                                        {% if day in events_by_date %}
+                                            {% for event in events_by_date|default_if_none:'' %}
+                                                {% for day_num, day_events in events_by_date.items %}
+                                                    {% if day_num == day %}
+                                                        {% for event in day_events %}
+                                                            <div class="event {{ event.event_type }}" title="{{ event.title }} - {{ event.description }}">
+                                                                {{ event.title|truncatechars:15 }}
+                                                            </div>
+                                                        {% endfor %}
+                                                    {% endif %}
+                                                {% endfor %}
+                                            {% endfor %}
+                                        {% endif %}
+                                    {% endif %}
+                                </td>
+                            {% endfor %}
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Sidebar -->
+        <div class="calendar-sidebar">
+            <!-- Upcoming Events -->
+            <div class="sidebar-card">
+                <h3 class="card-title">Upcoming Events</h3>
+                {% if upcoming_events %}
+                    {% for event in upcoming_events %}
+                        <div class="upcoming-event">
+                            <div class="event-date">
+                                {{ event.start_date|date:"M d, Y" }}
+                                {% if event.is_multi_day %}
+                                    - {{ event.end_date|date:"M d, Y" }}
+                                {% endif %}
+                            </div>
+                            <div class="event-title">{{ event.title }}</div>
+                            <span class="event-type-badge {{ event.event_type }}">
+                                {{ event.get_event_type_display }}
+                            </span>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <p style="color: #666; font-style: italic;">No upcoming events in the next 30 days.</p>
+                {% endif %}
+            </div>
+            
+            <!-- Legend -->
+            <div class="sidebar-card">
+                <h3 class="card-title">Event Types</h3>
+                <div class="legend">
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #4caf50;"></div>
+                        <span class="legend-text">Semester Events</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #9c27b0;"></div>
+                        <span class="legend-text">Registration</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #ff9800;"></div>
+                        <span class="legend-text">Exams</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #e91e63;"></div>
+                        <span class="legend-text">Holidays</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #f44336;"></div>
+                        <span class="legend-text">Deadlines</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #2196f3;"></div>
+                        <span class="legend-text">Other Events</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Quick Links -->
+            <div class="sidebar-card">
+                <h3 class="card-title">Quick Links</h3>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <a href="{% url 'browse_courses' %}" class="nav-button">Browse Courses</a>
+                    <a href="{% url 'enrolled_courses' %}" class="nav-button">My Courses</a>
+                    <a href="{% url 'view_grades' %}" class="nav-button">View Grades</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

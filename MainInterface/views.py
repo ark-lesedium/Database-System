@@ -1,9 +1,23 @@
-from django.shortcuts import render, redirect
-from django.contrib.auth import authenticate, login, logout
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
 from django.contrib.auth.models import User
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from .models import UserProfile
+from django.db.models import Q, Avg, Count, Sum
+from django.http import JsonResponse, HttpResponse, Http404
+from django.utils import timezone
+from django.core.files.storage import default_storage
+from django.core.exceptions import ValidationError
+from .models import UserProfile, Course, Enrollment, Grade, Assignment, AssignmentSubmission
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+from reportlab.platypus.flowables import HRFlowable
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+from datetime import datetime
+import os
 
 # Create your views here.
 
@@ -126,13 +140,71 @@ def student_dashboard_view(request):
         messages.error(request, 'User profile not found.')
         return redirect('dashboard')
     
+    # Get student's enrolled courses
+    enrolled_courses = Course.objects.filter(
+        enrollments__student=request.user,
+        enrollments__status='enrolled'
+    )
+    enrolled_courses_count = enrolled_courses.count()
+    
+    # Get assignments for enrolled courses
+    assignments = Assignment.objects.filter(
+        course__in=enrolled_courses,
+        status='published'
+    ).select_related('course').order_by('due_date')
+    
+    # Get student's submissions
+    submissions = AssignmentSubmission.objects.filter(
+        student=request.user
+    ).select_related('assignment')
+    
+    # Create a map of assignment_id -> submission for easy lookup
+    submission_map = {sub.assignment.id: sub for sub in submissions}
+    
+    # Categorize assignments and get pending assignments
+    pending_assignments = []
+    submitted_assignments = []
+    overdue_assignments = []
+    
+    for assignment in assignments:
+        submission = submission_map.get(assignment.id)
+        assignment.user_submission = submission
+        
+        if submission and submission.status == 'submitted':
+            submitted_assignments.append(assignment)
+        elif assignment.is_overdue() and (not submission or submission.status == 'draft'):
+            overdue_assignments.append(assignment)
+        else:
+            pending_assignments.append(assignment)
+    
+    # Calculate GPA
+    grades = Grade.objects.filter(
+        student=request.user,
+        grade_type='final_grade'
+    ).select_related('course')
+    
+    if grades.exists():
+        total_points = 0
+        total_credits = 0
+        for grade in grades:
+            grade_points = Grade.GRADE_POINTS.get(grade.grade_value, 0)
+            if grade_points is not None:  # Exclude I, W, P grades from GPA
+                total_points += grade_points * grade.course.credits
+                total_credits += grade.course.credits
+        current_gpa = round(total_points / total_credits, 2) if total_credits > 0 else 0
+    else:
+        current_gpa = 'N/A'
+    
     # Context data for the student dashboard
     context = {
         'user': request.user,
-        'enrolled_courses_count': 0,  # Placeholder - will be populated when Course model is added
-        'current_gpa': 'N/A',  # Placeholder - will be calculated when Grade model is added
-        'pending_assignments': 0,  # Placeholder - will be populated when Assignment model is added
-        'attendance_percentage': 0,  # Placeholder - will be calculated when Attendance model is added
+        'enrolled_courses_count': enrolled_courses_count,
+        'current_gpa': current_gpa,
+        'pending_assignments': pending_assignments[:5],  # Show first 5 pending assignments
+        'pending_assignments_count': len(pending_assignments),
+        'submitted_assignments_count': len(submitted_assignments),
+        'overdue_assignments_count': len(overdue_assignments),
+        'attendance_percentage': 85,  # Placeholder for attendance
     }
     
     return render(request, 'MainInterface/student_dashboard.html', context)
@@ -163,3 +235,2149 @@ def logout_view(request):
     logout(request)
     messages.success(request, 'You have been logged out successfully.')
     return redirect('login')
+
+@login_required
+def profile_management_view(request):
+    """Handle profile management for all user types"""
+    if request.method == 'POST':
+        # Check if this is a password change request
+        if 'change_password' in request.POST:
+            current_password = request.POST.get('current_password', '').strip()
+            new_password = request.POST.get('new_password', '').strip()
+            confirm_password = request.POST.get('confirm_password', '').strip()
+            
+            # Validation
+            if not current_password or not new_password or not confirm_password:
+                messages.error(request, 'All password fields are required.')
+                return render(request, 'MainInterface/profile_management.html')
+            
+            # Check if current password is correct
+            if not request.user.check_password(current_password):
+                messages.error(request, 'Current password is incorrect.')
+                return render(request, 'MainInterface/profile_management.html')
+            
+            # Check if new passwords match
+            if new_password != confirm_password:
+                messages.error(request, 'New passwords do not match.')
+                return render(request, 'MainInterface/profile_management.html')
+            
+            # Check password strength
+            if len(new_password) < 8:
+                messages.error(request, 'Password must be at least 8 characters long.')
+                return render(request, 'MainInterface/profile_management.html')
+            
+            if new_password == current_password:
+                messages.error(request, 'New password must be different from current password.')
+                return render(request, 'MainInterface/profile_management.html')
+            
+            try:
+                # Change password
+                request.user.set_password(new_password)
+                request.user.save()
+                
+                # Update session to prevent logout
+                update_session_auth_hash(request, request.user)
+                
+                messages.success(request, 'Your password has been changed successfully!')
+                
+                # Redirect back to appropriate dashboard
+                user_type = request.user.userprofile.user_type
+                if user_type == 'student':
+                    return redirect('student_dashboard')
+                elif user_type == 'lecturer':
+                    return redirect('lecturer_dashboard')
+                else:
+                    return redirect('dashboard')
+                    
+            except Exception as e:
+                messages.error(request, f'An error occurred while changing your password: {str(e)}')
+        
+        else:
+            # Handle profile information update
+            first_name = request.POST.get('first_name', '').strip()
+            last_name = request.POST.get('last_name', '').strip()
+            email = request.POST.get('email', '').strip()
+            
+            # Validation
+            if not first_name or not last_name or not email:
+                messages.error(request, 'All fields are required.')
+                return render(request, 'MainInterface/profile_management.html')
+            
+            # Check if email is already taken by another user
+            if User.objects.filter(email=email).exclude(id=request.user.id).exists():
+                messages.error(request, 'This email address is already in use by another account.')
+                return render(request, 'MainInterface/profile_management.html')
+            
+            try:
+                # Update user information
+                user = request.user
+                user.first_name = first_name
+                user.last_name = last_name
+                user.email = email
+                user.save()
+                
+                messages.success(request, 'Your profile has been updated successfully!')
+                
+                # Redirect back to appropriate dashboard
+                user_type = user.userprofile.user_type
+                if user_type == 'student':
+                    return redirect('student_dashboard')
+                elif user_type == 'lecturer':
+                    return redirect('lecturer_dashboard')
+                else:
+                    return redirect('dashboard')
+                    
+            except Exception as e:
+                messages.error(request, f'An error occurred while updating your profile: {str(e)}')
+    
+    return render(request, 'MainInterface/profile_management.html')
+
+# Course Management Views
+@login_required
+def browse_courses_view(request):
+    """Browse available courses with search and filter functionality"""
+    # Get filter parameters
+    search_query = request.GET.get('search', '')
+    level_filter = request.GET.get('level', '')
+    semester_filter = request.GET.get('semester', '')
+    
+    # Get all courses
+    courses = Course.objects.all().select_related('lecturer')
+    
+    # Apply search filter
+    if search_query:
+        courses = courses.filter(
+            Q(course_code__icontains=search_query) |
+            Q(course_name__icontains=search_query) |
+            Q(description__icontains=search_query)
+        )
+    
+    # Apply level filter
+    if level_filter:
+        courses = courses.filter(level=level_filter)
+    
+    # Apply semester filter
+    if semester_filter:
+        courses = courses.filter(semester=semester_filter)
+    
+    # Get enrollment statistics for the current user
+    user_enrollments = {}
+    if hasattr(request.user, 'userprofile') and request.user.userprofile.user_type == 'student':
+        enrollments = Enrollment.objects.filter(student=request.user).select_related('course')
+        user_enrollments = {e.course.id: e.status for e in enrollments}
+    
+    # Calculate statistics
+    total_courses = courses.count()
+    available_courses = courses.filter(enrollments__status='enrolled').distinct().count()
+    enrolled_count = len([s for s in user_enrollments.values() if s == 'enrolled'])
+    pending_count = len([s for s in user_enrollments.values() if s == 'pending'])
+    
+    context = {
+        'courses': courses,
+        'total_courses': total_courses,
+        'available_courses': available_courses,
+        'enrolled_count': enrolled_count,
+        'pending_count': pending_count,
+        'user_enrollments': user_enrollments,
+    }
+    
+    return render(request, 'MainInterface/browse_courses.html', context)
+
+@login_required
+def enrolled_courses_view(request):
+    """View enrolled courses for students"""
+    # Ensure only students can access
+    try:
+        if request.user.userprofile.user_type != 'student':
+            messages.error(request, 'Access denied. Student access required.')
+            return redirect('dashboard')
+    except UserProfile.DoesNotExist:
+        messages.error(request, 'User profile not found.')
+        return redirect('dashboard')
+    
+    # Get filter parameters
+    status_filter = request.GET.get('status', '')
+    
+    # Get student's enrollments
+    enrollments = Enrollment.objects.filter(student=request.user).select_related('course', 'course__lecturer').order_by('-enrollment_date')
+    
+    # Apply status filter
+    if status_filter:
+        enrollments = enrollments.filter(status=status_filter)
+    
+    # Calculate statistics
+    total_enrollments = Enrollment.objects.filter(student=request.user).count()
+    enrolled_count = Enrollment.objects.filter(student=request.user, status='enrolled').count()
+    pending_count = Enrollment.objects.filter(student=request.user, status='pending').count()
+    waitlisted_count = Enrollment.objects.filter(student=request.user, status='waitlisted').count()
+    
+    # Calculate total credits for enrolled courses
+    enrolled_courses = Enrollment.objects.filter(student=request.user, status='enrolled').select_related('course')
+    total_credits = sum(enrollment.course.credits for enrollment in enrolled_courses)
+    
+    context = {
+        'enrollments': enrollments,
+        'total_enrollments': total_enrollments,
+        'enrolled_count': enrolled_count,
+        'pending_count': pending_count,
+        'waitlisted_count': waitlisted_count,
+        'total_credits': total_credits,
+    }
+    
+    return render(request, 'MainInterface/enrolled_courses.html', context)
+
+@login_required
+def view_grades_view(request):
+    """View grades and GPA for students"""
+    # Ensure only students can access
+    try:
+        if request.user.userprofile.user_type != 'student':
+            messages.error(request, 'Access denied. Student access required.')
+            return redirect('dashboard')
+    except UserProfile.DoesNotExist:
+        messages.error(request, 'User profile not found.')
+        return redirect('dashboard')
+    
+    # Get filter parameters
+    semester_filter = request.GET.get('semester', '')
+    grade_filter = request.GET.get('grade_filter', '')
+    
+    # Get all grades for the student
+    grades_query = Grade.objects.filter(student=request.user).select_related('course', 'course__lecturer')
+    
+    # Apply filters
+    if semester_filter:
+        grades_query = grades_query.filter(course__semester=semester_filter)
+    if grade_filter:
+        grades_query = grades_query.filter(grade_value__startswith=grade_filter)
+    
+    # Group grades by course and get final grades
+    course_grades = []
+    courses_with_grades = grades_query.values('course').distinct()
+    
+    for course_info in courses_with_grades:
+        course = Course.objects.get(id=course_info['course'])
+        course_grade_list = grades_query.filter(course=course).order_by('-date_graded')
+        
+        # Find final grade (if exists) or latest grade
+        final_grade = course_grade_list.filter(grade_type='final_grade').first()
+        if not final_grade:
+            final_grade = course_grade_list.first()
+        
+        # Calculate average score
+        numeric_grades = course_grade_list.filter(numeric_score__isnull=False)
+        avg_score = numeric_grades.aggregate(avg=Avg('numeric_score'))['avg'] or 0
+        
+        course_grades.append({
+            'course': course,
+            'final_grade': final_grade.grade_value if final_grade else 'N/A',
+            'assignments_count': course_grade_list.count(),
+            'average_score': avg_score,
+            'recent_grades': course_grade_list[:5],  # Last 5 grades
+        })
+    
+    # Calculate GPA
+    def calculate_gpa(grade_list):
+        total_points = 0
+        total_credits = 0
+        for course_data in grade_list:
+            if course_data['final_grade'] != 'N/A':
+                grade_points = Grade.GRADE_POINTS.get(course_data['final_grade'], 0)
+                if grade_points is not None:  # Exclude I, W, P grades from GPA
+                    total_points += grade_points * course_data['course'].credits
+                    total_credits += course_data['course'].credits
+        return round(total_points / total_credits, 2) if total_credits > 0 else 0
+    
+    current_gpa = calculate_gpa(course_grades)
+    
+    # Calculate semester GPA (if semester filter is applied)
+    semester_gpa = current_gpa if semester_filter else None
+    
+    # Calculate statistics
+    total_courses_with_grades = len(course_grades)
+    total_credits_completed = sum(course_data['course'].credits for course_data in course_grades)
+    
+    # Grade distribution
+    grade_distribution = {}
+    for grade_letter in ['A', 'B', 'C', 'D', 'F']:
+        count = sum(1 for course_data in course_grades 
+                   if course_data['final_grade'] and course_data['final_grade'].startswith(grade_letter))
+        grade_distribution[grade_letter] = count
+    
+    context = {
+        'course_grades': course_grades,
+        'current_gpa': current_gpa,
+        'semester_gpa': semester_gpa,
+        'total_courses_with_grades': total_courses_with_grades,
+        'total_credits_completed': total_credits_completed,
+        'grade_distribution': grade_distribution,
+    }
+    
+    return render(request, 'MainInterface/view_grades.html', context)
+
+@login_required
+def grade_detail_view(request, course_id):
+    """View individual course grade details."""
+    if not request.user.is_authenticated:
+        return redirect('login')
+    
+    try:
+        user_profile = request.user.userprofile
+        if user_profile.user_type != 'student':
+            messages.error(request, 'Access denied. Students only.')
+            return redirect('dashboard')
+        
+        # Get course and enrollment
+        course = get_object_or_404(Course, id=course_id)
+        enrollment = get_object_or_404(Enrollment, user=user_profile, course=course)
+        
+        # Get all grades for this course
+        grades = Grade.objects.filter(enrollment=enrollment).order_by('-date_graded')
+        
+        # Group grades by type
+        grades_by_type = {}
+        for grade in grades:
+            if grade.grade_type not in grades_by_type:
+                grades_by_type[grade.grade_type] = []
+            grades_by_type[grade.grade_type].append(grade)
+        
+        # Calculate statistics
+        total_assignments = grades.count()
+        
+        # Calculate average score
+        scored_grades = [g for g in grades if g.numeric_score and g.max_points]
+        if scored_grades:
+            total_points = sum(g.numeric_score for g in scored_grades)
+            max_possible = sum(g.max_points for g in scored_grades)
+            average_score = (total_points / max_possible) * 100 if max_possible > 0 else 0
+        else:
+            average_score = 0
+        
+        # Get final grade (latest grade marked as 'final')
+        final_grade = grades.filter(grade_type='final').first()
+        
+        context = {
+            'course': course,
+            'enrollment': enrollment,
+            'grades': grades,
+            'grades_by_type': grades_by_type,
+            'total_assignments': total_assignments,
+            'average_score': average_score,
+            'final_grade': final_grade,
+        }
+        
+        return render(request, 'MainInterface/grade_detail.html', context)
+        
+    except UserProfile.DoesNotExist:
+        messages.error(request, 'User profile not found.')
+        return redirect('login')
+
+@login_required
+def manage_courses_view(request):
+    """Manage courses for lecturers"""
+    # Ensure only lecturers can access
+    try:
+        if request.user.userprofile.user_type != 'lecturer':
+            messages.error(request, 'Access denied. Lecturer access required.')
+            return redirect('dashboard')
+    except UserProfile.DoesNotExist:
+        messages.error(request, 'User profile not found.')
+        return redirect('dashboard')
+    
+    # Get lecturer's courses with enrollment counts
+    courses = Course.objects.filter(lecturer=request.user.userprofile).prefetch_related('enrollments')
+    
+    # Add pending enrollment counts to each course
+    for course in courses:
+        course.pending_count = course.enrollments.filter(status='pending').count()
+    
+    # Calculate statistics
+    total_courses = courses.count()
+    active_courses = courses.filter(is_active=True).count()
+    total_students = sum(course.get_enrolled_count() for course in courses)
+    pending_enrollments = sum(course.enrollments.filter(status='pending').count() for course in courses)
+    
+    context = {
+        'courses': courses,
+        'total_courses': total_courses,
+        'active_courses': active_courses,
+        'total_students': total_students,
+        'pending_enrollments': pending_enrollments,
+    }
+    
+    return render(request, 'MainInterface/manage_courses.html', context)
+
+@login_required
+def add_course_view(request):
+    """Add a new course (lecturer only)"""
+    try:
+        if request.user.userprofile.user_type != 'lecturer':
+            messages.error(request, 'Access denied. Lecturer access required.')
+            return redirect('dashboard')
+    except UserProfile.DoesNotExist:
+        messages.error(request, 'User profile not found.')
+        return redirect('dashboard')
+    
+    if request.method == 'POST':
+        course_code = request.POST.get('course_code', '').strip().upper()
+        course_name = request.POST.get('course_name', '').strip()
+        description = request.POST.get('description', '').strip()
+        credits = request.POST.get('credits', '3')
+        semester = request.POST.get('semester', '1')
+        level = request.POST.get('level', '100')
+        max_students = request.POST.get('max_students', '50')
+        
+        # Validation
+        if not all([course_code, course_name, description]):
+            messages.error(request, 'Please fill in all required fields.')
+            return render(request, 'MainInterface/add_course.html')
+        
+        # Check if course code already exists
+        if Course.objects.filter(course_code=course_code).exists():
+            messages.error(request, f'Course code "{course_code}" already exists.')
+            return render(request, 'MainInterface/add_course.html')
+        
+        try:
+            # Create course
+            course = Course.objects.create(
+                course_code=course_code,
+                course_name=course_name,
+                description=description,
+                lecturer=request.user.userprofile,
+                credits=int(credits),
+                semester=semester,
+                level=level,
+                max_students=int(max_students)
+            )
+            
+            messages.success(request, f'Course "{course_code}" has been created successfully!')
+            return redirect('manage_courses')
+            
+        except ValueError as e:
+            messages.error(request, f'Invalid data provided: {str(e)}')
+        except Exception as e:
+            messages.error(request, f'An error occurred: {str(e)}')
+    
+    return render(request, 'MainInterface/add_course.html')
+
+@login_required
+def enroll_course_view(request, course_id):
+    """Enroll a student in a course"""
+    try:
+        if request.user.userprofile.user_type != 'student':
+            messages.error(request, 'Only students can enroll in courses.')
+            return redirect('browse_courses')
+    except UserProfile.DoesNotExist:
+        messages.error(request, 'User profile not found.')
+        return redirect('browse_courses')
+    
+    course = get_object_or_404(Course, id=course_id)
+    
+    # Check if already enrolled or has pending enrollment
+    existing_enrollment = Enrollment.objects.filter(student=request.user, course=course).first()
+    if existing_enrollment:
+        if existing_enrollment.status == 'enrolled':
+            messages.warning(request, f'You are already enrolled in {course.course_code}.')
+        elif existing_enrollment.status == 'pending':
+            messages.info(request, f'Your enrollment in {course.course_code} is pending approval.')
+        else:
+            messages.info(request, f'You have a {existing_enrollment.get_status_display().lower()} status for {course.course_code}.')
+        return redirect('browse_courses')
+    
+    # Create enrollment
+    status = 'enrolled' if course.has_space() else 'waitlisted'
+    Enrollment.objects.create(
+        student=request.user,
+        course=course,
+        status=status
+    )
+    
+    if status == 'enrolled':
+        messages.success(request, f'Successfully enrolled in {course.course_code}!')
+    else:
+        messages.info(request, f'Added to waitlist for {course.course_code}. You will be notified if a spot becomes available.')
+    
+    return redirect('browse_courses')
+
+@login_required
+def drop_course_view(request, course_id):
+    """Drop a course enrollment"""
+    try:
+        if request.user.userprofile.user_type != 'student':
+            messages.error(request, 'Access denied.')
+            return redirect('dashboard')
+    except UserProfile.DoesNotExist:
+        messages.error(request, 'User profile not found.')
+        return redirect('dashboard')
+    
+    enrollment = get_object_or_404(Enrollment, student=request.user, course_id=course_id)
+    course_code = enrollment.course.course_code
+    
+    enrollment.status = 'dropped'
+    enrollment.save()
+    
+    messages.success(request, f'Successfully dropped {course_code}.')
+    return redirect('browse_courses')
+
+@login_required
+def cancel_enrollment_view(request, course_id):
+    """Cancel a pending enrollment"""
+    try:
+        if request.user.userprofile.user_type != 'student':
+            messages.error(request, 'Access denied.')
+            return redirect('dashboard')
+    except UserProfile.DoesNotExist:
+        messages.error(request, 'User profile not found.')
+        return redirect('dashboard')
+    
+    enrollment = get_object_or_404(Enrollment, student=request.user, course_id=course_id, status='pending')
+    course_code = enrollment.course.course_code
+    
+    enrollment.delete()
+    
+    messages.success(request, f'Cancelled enrollment request for {course_code}.')
+    return redirect('browse_courses')
+
+@login_required
+def join_waitlist_view(request, course_id):
+    """Join course waitlist"""
+    try:
+        if request.user.userprofile.user_type != 'student':
+            messages.error(request, 'Access denied.')
+            return redirect('dashboard')
+    except UserProfile.DoesNotExist:
+        messages.error(request, 'User profile not found.')
+        return redirect('dashboard')
+    
+    course = get_object_or_404(Course, id=course_id)
+    
+    # Check if already has enrollment record
+    existing_enrollment = Enrollment.objects.filter(student=request.user, course=course).first()
+    if existing_enrollment:
+        messages.warning(request, f'You already have a record for {course.course_code}.')
+        return redirect('browse_courses')
+    
+    # Join waitlist
+    Enrollment.objects.create(
+        student=request.user,
+        course=course,
+        status='waitlisted'
+    )
+    
+    messages.info(request, f'Added to waitlist for {course.course_code}.')
+    return redirect('browse_courses')
+
+@login_required
+def course_detail_view(request, course_id):
+    """View detailed course information"""
+    course = get_object_or_404(Course, id=course_id)
+    
+    # Get enrollment status for current user if student
+    user_enrollment = None
+    if hasattr(request.user, 'userprofile') and request.user.userprofile.user_type == 'student':
+        user_enrollment = Enrollment.objects.filter(student=request.user, course=course).first()
+    
+    context = {
+        'course': course,
+        'user_enrollment': user_enrollment,
+    }
+    
+    return render(request, 'MainInterface/course_detail.html', context)
+
+# Course management views
+@login_required
+def edit_course_view(request, course_id):
+    """Edit course details (lecturer only)"""
+    try:
+        if request.user.userprofile.user_type != 'lecturer':
+            messages.error(request, 'Access denied. Lecturer access required.')
+            return redirect('dashboard')
+    except UserProfile.DoesNotExist:
+        messages.error(request, 'User profile not found.')
+        return redirect('dashboard')
+    
+    try:
+        course = Course.objects.get(id=course_id, lecturer=request.user.userprofile)
+    except Course.DoesNotExist:
+        messages.error(request, 'Course not found or you do not have permission to edit it.')
+        return redirect('manage_courses')
+    
+    if request.method == 'POST':
+        # Get form data
+        course_code = request.POST.get('course_code', '').strip()
+        course_name = request.POST.get('course_name', '').strip()
+        description = request.POST.get('description', '').strip()
+        credits = request.POST.get('credits')
+        level = request.POST.get('level')
+        semester = request.POST.get('semester')
+        max_students = request.POST.get('max_students')
+        
+        # Validation
+        errors = []
+        
+        if not course_code:
+            errors.append('Course code is required.')
+        elif len(course_code) > 20:
+            errors.append('Course code must be 20 characters or less.')
+        elif Course.objects.filter(course_code=course_code).exclude(id=course.id).exists():
+            errors.append('A course with this code already exists.')
+            
+        if not course_name:
+            errors.append('Course name is required.')
+        elif len(course_name) > 200:
+            errors.append('Course name must be 200 characters or less.')
+            
+        try:
+            credits = int(credits) if credits else 3
+            if credits < 1 or credits > 10:
+                errors.append('Credits must be between 1 and 10.')
+        except ValueError:
+            errors.append('Credits must be a valid number.')
+            
+        try:
+            max_students = int(max_students) if max_students else 30
+            if max_students < 1 or max_students > 500:
+                errors.append('Maximum students must be between 1 and 500.')
+            elif max_students < course.get_enrolled_count():
+                errors.append(f'Cannot reduce max students below current enrollment count ({course.get_enrolled_count()}).')
+        except ValueError:
+            errors.append('Maximum students must be a valid number.')
+            
+        if level not in ['undergraduate', 'graduate', 'postgraduate']:
+            errors.append('Invalid level selected.')
+            
+        if semester not in ['spring', 'summer', 'fall', 'winter']:
+            errors.append('Invalid semester selected.')
+        
+        if errors:
+            for error in errors:
+                messages.error(request, error)
+        else:
+            # Update course
+            course.course_code = course_code
+            course.course_name = course_name
+            course.description = description
+            course.credits = credits
+            course.level = level
+            course.semester = semester
+            course.max_students = max_students
+            course.save()
+            
+            messages.success(request, f'Course "{course.course_name}" updated successfully.')
+            return redirect('manage_courses')
+    
+    context = {
+        'course': course,
+        'level_choices': Course.LEVEL_CHOICES,
+        'semester_choices': Course.SEMESTER_CHOICES,
+    }
+    
+    return render(request, 'MainInterface/edit_course.html', context)
+
+@login_required  
+def delete_course_view(request, course_id):
+    messages.info(request, 'Course deletion functionality will be implemented soon.')
+    return redirect('manage_courses')
+
+@login_required
+def course_enrollments_view(request, course_id):
+    """Manage course enrollments (lecturer only)"""
+    try:
+        if request.user.userprofile.user_type != 'lecturer':
+            messages.error(request, 'Access denied. Lecturer access required.')
+            return redirect('dashboard')
+    except UserProfile.DoesNotExist:
+        messages.error(request, 'User profile not found.')
+        return redirect('dashboard')
+    
+    try:
+        course = Course.objects.get(id=course_id, lecturer=request.user.userprofile)
+    except Course.DoesNotExist:
+        messages.error(request, 'Course not found or you do not have permission to manage its enrollments.')
+        return redirect('manage_courses')
+    
+    # Handle POST requests for enrollment actions
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        enrollment_id = request.POST.get('enrollment_id')
+        
+        try:
+            enrollment = Enrollment.objects.get(id=enrollment_id, course=course)
+            
+            if action == 'approve':
+                if course.has_available_slots():
+                    enrollment.status = 'enrolled'
+                    enrollment.save()
+                    messages.success(request, f'Approved enrollment for {enrollment.student.user.get_full_name() or enrollment.student.user.username}.')
+                else:
+                    messages.error(request, 'Cannot approve enrollment - course is at maximum capacity.')
+                    
+            elif action == 'reject':
+                enrollment.status = 'rejected'
+                enrollment.save()
+                messages.success(request, f'Rejected enrollment for {enrollment.student.user.get_full_name() or enrollment.student.user.username}.')
+                
+            elif action == 'unenroll':
+                student_name = enrollment.student.user.get_full_name() or enrollment.student.user.username
+                enrollment.delete()
+                messages.success(request, f'Removed {student_name} from the course.')
+                
+            elif action == 'reactivate':
+                enrollment.status = 'enrolled'
+                enrollment.save()
+                messages.success(request, f'Reactivated enrollment for {enrollment.student.user.get_full_name() or enrollment.student.user.username}.')
+                
+        except Enrollment.DoesNotExist:
+            messages.error(request, 'Enrollment not found.')
+    
+    # Get all enrollments for this course
+    enrollments = Enrollment.objects.filter(course=course).select_related('student').order_by('-created_at')
+    
+    # Separate by status
+    pending_enrollments = enrollments.filter(status='pending')
+    active_enrollments = enrollments.filter(status='enrolled')
+    rejected_enrollments = enrollments.filter(status='rejected')
+    
+    # Calculate statistics
+    total_enrollments = enrollments.count()
+    enrolled_count = active_enrollments.count()
+    pending_count = pending_enrollments.count()
+    rejected_count = rejected_enrollments.count()
+    available_slots = course.max_students - enrolled_count
+    
+    context = {
+        'course': course,
+        'pending_enrollments': pending_enrollments,
+        'active_enrollments': active_enrollments,
+        'rejected_enrollments': rejected_enrollments,
+        'total_enrollments': total_enrollments,
+        'enrolled_count': enrolled_count,
+        'pending_count': pending_count,
+        'rejected_count': rejected_count,
+        'available_slots': available_slots,
+        'is_full': available_slots <= 0,
+    }
+    
+    return render(request, 'MainInterface/course_enrollments.html', context)
+
+@login_required
+def activate_course_view(request, course_id):
+    """Activate a course"""
+    try:
+        # Check if user is a lecturer
+        if request.user.userprofile.user_type != 'lecturer':
+            messages.error(request, 'Access denied. Lecturer access required.')
+            return redirect('dashboard')
+        
+        # Get the course
+        course = get_object_or_404(Course, id=course_id, lecturer=request.user.userprofile)
+        
+        # Activate the course
+        course.is_active = True
+        course.save()
+        
+        messages.success(request, f'Course "{course.course_name}" has been activated successfully.')
+        
+    except UserProfile.DoesNotExist:
+        messages.error(request, 'User profile not found.')
+    except Exception as e:
+        messages.error(request, f'Error activating course: {str(e)}')
+    
+    return redirect('manage_courses')
+
+@login_required
+def deactivate_course_view(request, course_id):
+    """Deactivate a course"""
+    try:
+        # Check if user is a lecturer
+        if request.user.userprofile.user_type != 'lecturer':
+            messages.error(request, 'Access denied. Lecturer access required.')
+            return redirect('dashboard')
+        
+        # Get the course
+        course = get_object_or_404(Course, id=course_id, lecturer=request.user.userprofile)
+        
+        # Deactivate the course
+        course.is_active = False
+        course.save()
+        
+        messages.success(request, f'Course "{course.course_name}" has been deactivated successfully.')
+        
+    except UserProfile.DoesNotExist:
+        messages.error(request, 'User profile not found.')
+    except Exception as e:
+        messages.error(request, f'Error deactivating course: {str(e)}')
+    
+    return redirect('manage_courses')
+
+@login_required
+def academic_calendar_view(request):
+    """Academic calendar view for students and faculty"""
+    from .models import AcademicCalendar
+    import calendar
+    from datetime import datetime, timedelta
+    
+    # Get current date
+    today = timezone.now().date()
+    current_year = today.year
+    current_month = today.month
+    
+    # Get year and month from query parameters
+    year = int(request.GET.get('year', current_year))
+    month = int(request.GET.get('month', current_month))
+    
+    # Get all events for the selected month/year
+    events = AcademicCalendar.objects.filter(
+        is_active=True,
+        start_date__year=year,
+        start_date__month=month
+    ).order_by('start_date')
+    
+    # Get events that span into this month
+    spanning_events = AcademicCalendar.objects.filter(
+        is_active=True,
+        start_date__lt=datetime(year, month, 1).date(),
+        end_date__gte=datetime(year, month, 1).date()
+    ).order_by('start_date')
+    
+    # Combine events
+    all_events = list(events) + list(spanning_events)
+    
+    # Create calendar
+    cal = calendar.monthcalendar(year, month)
+    month_name = calendar.month_name[month]
+    
+    # Navigation dates
+    if month == 1:
+        prev_month, prev_year = 12, year - 1
+    else:
+        prev_month, prev_year = month - 1, year
+    
+    if month == 12:
+        next_month, next_year = 1, year + 1
+    else:
+        next_month, next_year = month + 1, year
+    
+    # Organize events by date for easy template access
+    events_by_date = {}
+    for event in all_events:
+        event_start = event.start_date
+        event_end = event.end_date or event.start_date
+        
+        # Add event to all dates it spans
+        current_date = event_start
+        while current_date <= event_end:
+            if current_date.year == year and current_date.month == month:
+                if current_date.day not in events_by_date:
+                    events_by_date[current_date.day] = []
+                events_by_date[current_date.day].append(event)
+            current_date += timedelta(days=1)
+    
+    # Get upcoming events (next 30 days)
+    upcoming_events = AcademicCalendar.objects.filter(
+        is_active=True,
+        start_date__gte=today,
+        start_date__lte=today + timedelta(days=30)
+    ).order_by('start_date')[:5]
+    
+    context = {
+        'calendar': cal,
+        'year': year,
+        'month': month,
+        'month_name': month_name,
+        'today': today,
+        'prev_month': prev_month,
+        'prev_year': prev_year,
+        'next_month': next_month,
+        'next_year': next_year,
+        'events_by_date': events_by_date,
+        'upcoming_events': upcoming_events,
+        'all_events': all_events,
+    }
+    
+    return render(request, 'MainInterface/academic_calendar.html', context)
+
+@login_required
+def announcements_view(request):
+    """View all announcements visible to the current user"""
+    from .models import Announcement
+    
+    # Get all active announcements visible to the user
+    announcements = Announcement.objects.filter(is_active=True)
+    
+    # Filter announcements based on user type and visibility
+    visible_announcements = []
+    for announcement in announcements:
+        if announcement.is_visible_to_user(request.user):
+            visible_announcements.append(announcement)
+    
+    # Separate pinned and regular announcements
+    pinned_announcements = [a for a in visible_announcements if a.is_pinned]
+    regular_announcements = [a for a in visible_announcements if not a.is_pinned]
+    
+    # Sort by priority and date
+    def sort_key(announcement):
+        priority_order = {'urgent': 0, 'high': 1, 'medium': 2, 'low': 3}
+        return (priority_order.get(announcement.priority, 3), announcement.created_at)
+    
+    pinned_announcements.sort(key=sort_key, reverse=True)
+    regular_announcements.sort(key=sort_key, reverse=True)
+    
+    # Get recent announcements (last 7 days)
+    from datetime import timedelta
+    recent_cutoff = timezone.now() - timedelta(days=7)
+    recent_announcements = [a for a in visible_announcements if a.created_at >= recent_cutoff]
+    
+    # Get user's courses for context (if student)
+    user_courses = []
+    if hasattr(request.user, 'userprofile') and request.user.userprofile.user_type == 'student':
+        enrollments = Enrollment.objects.filter(student=request.user, status='enrolled').select_related('course')
+        user_courses = [e.course for e in enrollments]
+    elif hasattr(request.user, 'userprofile') and request.user.userprofile.user_type == 'lecturer':
+        user_courses = Course.objects.filter(lecturer=request.user.userprofile)
+    
+    context = {
+        'pinned_announcements': pinned_announcements,
+        'regular_announcements': regular_announcements,
+        'recent_announcements': recent_announcements,
+        'user_courses': user_courses,
+        'total_announcements': len(visible_announcements),
+    }
+    
+    return render(request, 'MainInterface/announcements.html', context)
+
+@login_required
+def study_materials_view(request):
+    """View study materials for enrolled courses"""
+    from .models import StudyMaterial
+    from django.http import HttpResponse, Http404
+    
+    # Handle file download
+    if request.GET.get('download'):
+        material_id = request.GET.get('download')
+        try:
+            material = StudyMaterial.objects.get(id=material_id)
+            if material.is_accessible_to_user(request.user):
+                material.increment_download_count()
+                response = HttpResponse(material.file.read(), content_type='application/octet-stream')
+                response['Content-Disposition'] = f'attachment; filename="{material.file.name.split("/")[-1]}"'
+                return response
+            else:
+                messages.error(request, "You don't have permission to download this file.")
+        except StudyMaterial.DoesNotExist:
+            messages.error(request, "File not found.")
+        return redirect('study_materials')
+    
+    # Get filter parameters
+    course_filter = request.GET.get('course', '')
+    material_type_filter = request.GET.get('type', '')
+    search_query = request.GET.get('search', '')
+    
+    # Get user's enrolled courses
+    user_courses = []
+    if hasattr(request.user, 'userprofile'):
+        if request.user.userprofile.user_type == 'student':
+            enrollments = Enrollment.objects.filter(student=request.user, status='enrolled').select_related('course')
+            user_courses = [e.course for e in enrollments]
+        elif request.user.userprofile.user_type == 'lecturer':
+            user_courses = list(Course.objects.filter(lecturer=request.user.userprofile))
+    
+    # Get study materials for user's courses
+    materials = StudyMaterial.objects.filter(
+        course__in=user_courses,
+        is_active=True
+    ).select_related('course', 'uploaded_by').order_by('-created_at')
+    
+    # Apply filters
+    if course_filter:
+        materials = materials.filter(course__id=course_filter)
+    
+    if material_type_filter:
+        materials = materials.filter(material_type=material_type_filter)
+    
+    if search_query:
+        materials = materials.filter(
+            Q(title__icontains=search_query) |
+            Q(description__icontains=search_query) |
+            Q(course__course_name__icontains=search_query) |
+            Q(course__course_code__icontains=search_query)
+        )
+    
+    # Group materials by course
+    materials_by_course = {}
+    for material in materials:
+        if material.course not in materials_by_course:
+            materials_by_course[material.course] = []
+        materials_by_course[material.course].append(material)
+    
+    # Get recent materials (last 30 days)
+    from datetime import timedelta
+    recent_cutoff = timezone.now() - timedelta(days=30)
+    recent_materials = materials.filter(created_at__gte=recent_cutoff)[:5]
+    
+    # Get material type choices for filter
+    material_types = StudyMaterial.MATERIAL_TYPE_CHOICES
+    
+    # Calculate statistics
+    total_materials = materials.count()
+    total_downloads = sum(m.download_count for m in materials)
+    
+    context = {
+        'materials_by_course': materials_by_course,
+        'user_courses': user_courses,
+        'recent_materials': recent_materials,
+        'material_types': material_types,
+        'selected_course': course_filter,
+        'selected_type': material_type_filter,
+        'search_query': search_query,
+        'total_materials': total_materials,
+        'total_downloads': total_downloads,
+        'total_courses': len(user_courses),
+    }
+    
+    return render(request, 'MainInterface/study_materials.html', context)
+
+# Assignment Views
+@login_required
+def assignments_view(request):
+    """View available assignments for students"""
+    try:
+        if request.user.userprofile.user_type != 'student':
+            messages.error(request, 'Access denied. Student access required.')
+            return redirect('dashboard')
+    except UserProfile.DoesNotExist:
+        messages.error(request, 'User profile not found.')
+        return redirect('dashboard')
+    
+    # Get student's enrolled courses
+    enrolled_courses = Course.objects.filter(
+        enrollments__student=request.user,
+        enrollments__status='enrolled'
+    )
+    
+    # Get assignments for enrolled courses
+    assignments = Assignment.objects.filter(
+        course__in=enrolled_courses,
+        status='published'
+    ).select_related('course').order_by('due_date')
+    
+    # Get student's submissions
+    submissions = AssignmentSubmission.objects.filter(
+        student=request.user
+    ).select_related('assignment')
+    
+    # Create a map of assignment_id -> submission for easy lookup
+    submission_map = {sub.assignment.id: sub for sub in submissions}
+    
+    # Categorize assignments
+    pending_assignments = []
+    submitted_assignments = []
+    overdue_assignments = []
+    
+    for assignment in assignments:
+        submission = submission_map.get(assignment.id)
+        assignment.user_submission = submission
+        
+        if submission and submission.status == 'submitted':
+            submitted_assignments.append(assignment)
+        elif assignment.is_overdue() and (not submission or submission.status == 'draft'):
+            overdue_assignments.append(assignment)
+        else:
+            pending_assignments.append(assignment)
+    
+    context = {
+        'pending_assignments': pending_assignments,
+        'submitted_assignments': submitted_assignments,
+        'overdue_assignments': overdue_assignments,
+        'total_assignments': assignments.count(),
+        'total_submitted': len(submitted_assignments),
+        'total_pending': len(pending_assignments),
+        'total_overdue': len(overdue_assignments),
+    }
+    
+    return render(request, 'MainInterface/assignments.html', context)
+
+@login_required
+def submit_assignment_view(request, assignment_id):
+    """Submit an assignment"""
+    try:
+        if request.user.userprofile.user_type != 'student':
+            messages.error(request, 'Access denied. Student access required.')
+            return redirect('dashboard')
+    except UserProfile.DoesNotExist:
+        messages.error(request, 'User profile not found.')
+        return redirect('dashboard')
+    
+    assignment = get_object_or_404(Assignment, id=assignment_id)
+    
+    # Check if student is enrolled in the course
+    if not Enrollment.objects.filter(
+        student=request.user, 
+        course=assignment.course, 
+        status='enrolled'
+    ).exists():
+        messages.error(request, 'You are not enrolled in this course.')
+        return redirect('assignments')
+    
+    # Get or create submission
+    submission, created = AssignmentSubmission.objects.get_or_create(
+        assignment=assignment,
+        student=request.user,
+        defaults={'status': 'draft'}
+    )
+    
+    # Check if assignment is closed for submissions
+    if assignment.status == 'closed':
+        messages.error(request, 'This assignment is no longer accepting submissions.')
+        return redirect('assignments')
+    
+    # Check if assignment is overdue and late submissions are not allowed
+    if assignment.is_overdue() and not assignment.late_submission_allowed:
+        messages.error(request, 'This assignment is overdue and late submissions are not allowed.')
+        return redirect('assignments')
+    
+    if request.method == 'POST':
+        submission_text = request.POST.get('submission_text', '').strip()
+        submitted_file = request.FILES.get('submission_file')
+        action = request.POST.get('action')
+        
+        # Validate file if provided
+        if submitted_file:
+            # Check file size
+            if submitted_file.size > assignment.max_file_size:
+                messages.error(request, f'File size exceeds maximum allowed size of {assignment.get_max_file_size_display()}.')
+                return render(request, 'MainInterface/submit_assignment.html', {
+                    'assignment': assignment,
+                    'submission': submission
+                })
+            
+            # Check file type
+            file_extension = submitted_file.name.split('.')[-1].lower()
+            allowed_types = assignment.get_allowed_file_types_list()
+            if file_extension not in allowed_types:
+                messages.error(request, f'File type ".{file_extension}" is not allowed. Allowed types: {", ".join(allowed_types)}')
+                return render(request, 'MainInterface/submit_assignment.html', {
+                    'assignment': assignment,
+                    'submission': submission
+                })
+            
+            # Remove old file if exists
+            if submission.submission_file:
+                old_file_path = submission.submission_file.path
+                if os.path.exists(old_file_path):
+                    os.remove(old_file_path)
+            
+            submission.submission_file = submitted_file
+        
+        # Update submission text
+        submission.submission_text = submission_text
+        
+        # Handle different actions
+        if action == 'save_draft':
+            submission.status = 'draft'
+            submission.save()
+            messages.success(request, 'Draft saved successfully.')
+        elif action == 'submit':
+            if not submitted_file and not submission.submission_file and not submission_text:
+                messages.error(request, 'Please provide either a file or text submission.')
+                return render(request, 'MainInterface/submit_assignment.html', {
+                    'assignment': assignment,
+                    'submission': submission
+                })
+            
+            submission.status = 'submitted'
+            submission.submitted_at = timezone.now()
+            submission.save()
+            messages.success(request, 'Assignment submitted successfully!')
+            return redirect('assignments')
+        
+        return render(request, 'MainInterface/submit_assignment.html', {
+            'assignment': assignment,
+            'submission': submission
+        })
+    
+    context = {
+        'assignment': assignment,
+        'submission': submission,
+        'allowed_file_types': assignment.get_allowed_file_types_list(),
+        'max_file_size': assignment.get_max_file_size_display(),
+    }
+    
+    return render(request, 'MainInterface/submit_assignment.html', context)
+
+@login_required
+def view_submissions_view(request):
+    """View student's assignment submissions"""
+    try:
+        if request.user.userprofile.user_type != 'student':
+            messages.error(request, 'Access denied. Student access required.')
+            return redirect('dashboard')
+    except UserProfile.DoesNotExist:
+        messages.error(request, 'User profile not found.')
+        return redirect('dashboard')
+    
+    # Get all submissions by the student
+    submissions = AssignmentSubmission.objects.filter(
+        student=request.user
+    ).select_related('assignment', 'assignment__course').order_by('-submitted_at')
+    
+    # Filter by status if requested
+    status_filter = request.GET.get('status')
+    if status_filter:
+        submissions = submissions.filter(status=status_filter)
+    
+    # Group submissions by course
+    submissions_by_course = {}
+    for submission in submissions:
+        course = submission.assignment.course
+        if course not in submissions_by_course:
+            submissions_by_course[course] = []
+        submissions_by_course[course].append(submission)
+    
+    # Calculate statistics
+    total_submissions = submissions.count()
+    submitted_count = submissions.filter(status='submitted').count()
+    graded_count = submissions.filter(status='graded').count()
+    draft_count = submissions.filter(status='draft').count()
+    
+    context = {
+        'submissions_by_course': submissions_by_course,
+        'total_submissions': total_submissions,
+        'submitted_count': submitted_count,
+        'graded_count': graded_count,
+        'draft_count': draft_count,
+        'selected_status': status_filter,
+    }
+    
+    return render(request, 'MainInterface/view_submissions.html', context)
+
+@login_required
+def lecturer_assignments_view(request):
+    """View assignments for lecturers to manage"""
+    try:
+        if request.user.userprofile.user_type != 'lecturer':
+            messages.error(request, 'Access denied. Lecturer access required.')
+            return redirect('dashboard')
+    except UserProfile.DoesNotExist:
+        messages.error(request, 'User profile not found.')
+        return redirect('dashboard')
+    
+    # Get lecturer's courses
+    courses = Course.objects.filter(lecturer=request.user.userprofile)
+    
+    # Get assignments for lecturer's courses
+    assignments = Assignment.objects.filter(
+        course__in=courses
+    ).select_related('course').order_by('-created_at')
+    
+    # Get submission statistics for each assignment
+    for assignment in assignments:
+        assignment.total_submissions = assignment.submissions.count()
+        assignment.pending_submissions = assignment.submissions.filter(status='submitted').count()
+        assignment.graded_submissions = assignment.submissions.filter(status='graded').count()
+    
+    # Calculate overall statistics
+    total_assignments = assignments.count()
+    published_assignments = assignments.filter(status='published').count()
+    total_submissions = sum(a.total_submissions for a in assignments)
+    pending_grading = sum(a.pending_submissions for a in assignments)
+    
+    context = {
+        'assignments': assignments,
+        'courses': courses,
+        'total_assignments': total_assignments,
+        'published_assignments': published_assignments,
+        'total_submissions': total_submissions,
+        'pending_grading': pending_grading,
+    }
+    
+    return render(request, 'MainInterface/lecturer_assignments.html', context)
+
+@login_required
+def assignment_submissions_view(request, assignment_id):
+    """View all submissions for a specific assignment (lecturer view)"""
+    try:
+        if request.user.userprofile.user_type != 'lecturer':
+            messages.error(request, 'Access denied. Lecturer access required.')
+            return redirect('dashboard')
+    except UserProfile.DoesNotExist:
+        messages.error(request, 'User profile not found.')
+        return redirect('dashboard')
+    
+    assignment = get_object_or_404(Assignment, id=assignment_id)
+    
+    # Check if lecturer owns this assignment
+    if assignment.course.lecturer != request.user.userprofile:
+        messages.error(request, 'You do not have permission to view this assignment.')
+        return redirect('lecturer_assignments')
+    
+    # Get all submissions for this assignment
+    submissions = AssignmentSubmission.objects.filter(
+        assignment=assignment
+    ).select_related('student').order_by('-submitted_at')
+    
+    # Filter by status if requested
+    status_filter = request.GET.get('status')
+    if status_filter:
+        submissions = submissions.filter(status=status_filter)
+    
+    # Calculate statistics
+    total_students = Enrollment.objects.filter(
+        course=assignment.course, 
+        status='enrolled'
+    ).count()
+    total_submissions = submissions.count()
+    submitted_count = submissions.filter(status='submitted').count()
+    graded_count = submissions.filter(status='graded').count()
+    late_submissions = submissions.filter(late_submission=True).count()
+    
+    context = {
+        'assignment': assignment,
+        'submissions': submissions,
+        'total_students': total_students,
+        'total_submissions': total_submissions,
+        'submitted_count': submitted_count,
+        'graded_count': graded_count,
+        'late_submissions': late_submissions,
+        'selected_status': status_filter,
+    }
+    
+    return render(request, 'MainInterface/assignment_submissions.html', context)
+
+@login_required
+def download_submission_view(request, submission_id):
+    """Download a submission file"""
+    submission = get_object_or_404(AssignmentSubmission, id=submission_id)
+    
+    # Check permissions
+    can_access = False
+    if hasattr(request.user, 'userprofile'):
+        # Student can download their own submissions
+        if request.user.userprofile.user_type == 'student' and submission.student == request.user:
+            can_access = True
+        # Lecturer can download submissions for their assignments
+        elif request.user.userprofile.user_type == 'lecturer' and submission.assignment.course.lecturer == request.user.userprofile:
+            can_access = True
+        # Admin can download any submission
+        elif request.user.userprofile.user_type == 'admin':
+            can_access = True
+    
+    if not can_access:
+        messages.error(request, 'You do not have permission to download this file.')
+        return redirect('dashboard')
+    
+    if not submission.submission_file:
+        messages.error(request, 'No file attached to this submission.')
+        return redirect('view_submissions')
+    
+    try:
+        response = HttpResponse(submission.submission_file.read(), content_type='application/octet-stream')
+        filename = submission.original_filename or submission.submission_file.name.split('/')[-1]
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+    except Exception as e:
+        messages.error(request, 'Error downloading file.')
+        return redirect('view_submissions')
+
+@login_required
+def academic_progress_view(request):
+    """View academic progress for students"""
+    try:
+        if request.user.userprofile.user_type != 'student':
+            messages.error(request, 'Access denied. Student access required.')
+            return redirect('dashboard')
+    except UserProfile.DoesNotExist:
+        messages.error(request, 'User profile not found.')
+        return redirect('dashboard')
+    
+    # Get student's enrolled courses
+    enrolled_courses = Course.objects.filter(
+        enrollments__student=request.user,
+        enrollments__status='enrolled'
+    ).prefetch_related('grades', 'assignments', 'assignments__submissions')
+    
+    # Calculate progress for each course
+    course_progress = []
+    overall_stats = {
+        'total_courses': 0,
+        'total_credits': 0,
+        'completed_credits': 0,
+        'total_assignments': 0,
+        'completed_assignments': 0,
+        'average_grade': 0,
+        'gpa': 0
+    }
+    
+    for course in enrolled_courses:
+        # Get grades for this course
+        course_grades = Grade.objects.filter(
+            student=request.user,
+            course=course
+        ).order_by('-date_graded')
+        
+        # Get assignments for this course
+        course_assignments = Assignment.objects.filter(
+            course=course,
+            status='published'
+        )
+        
+        # Get submissions for this course
+        course_submissions = AssignmentSubmission.objects.filter(
+            student=request.user,
+            assignment__course=course
+        )
+        
+        # Calculate assignment completion rate
+        total_assignments = course_assignments.count()
+        completed_assignments = course_submissions.filter(status='submitted').count()
+        assignment_completion = (completed_assignments / total_assignments * 100) if total_assignments > 0 else 0
+        
+        # Calculate grade statistics
+        graded_assignments = course_submissions.filter(status='graded', grade__isnull=False)
+        if graded_assignments.exists():
+            grades_sum = sum(float(sub.grade) for sub in graded_assignments)
+            average_grade = grades_sum / graded_assignments.count()
+        else:
+            average_grade = 0
+        
+        # Get final grade if available
+        final_grade = course_grades.filter(grade_type='final_grade').first()
+        final_grade_value = final_grade.grade_value if final_grade else None
+        final_grade_points = Grade.GRADE_POINTS.get(final_grade_value, 0) if final_grade_value else 0
+        
+        # Calculate overall progress based on assignments and grades
+        progress_percentage = 0
+        if total_assignments > 0:
+            # 70% weight for assignment completion, 30% for average grade
+            assignment_weight = 0.7
+            grade_weight = 0.3
+            
+            progress_percentage = (
+                (assignment_completion * assignment_weight) +
+                (average_grade * grade_weight)
+            )
+            progress_percentage = min(progress_percentage, 100)  # Cap at 100%
+        
+        # Determine progress status
+        if progress_percentage >= 80:
+            progress_status = 'excellent'
+        elif progress_percentage >= 60:
+            progress_status = 'good'
+        elif progress_percentage >= 40:
+            progress_status = 'average'
+        else:
+            progress_status = 'needs_improvement'
+        
+        course_data = {
+            'course': course,
+            'total_assignments': total_assignments,
+            'completed_assignments': completed_assignments,
+            'assignment_completion': round(assignment_completion, 1),
+            'average_grade': round(average_grade, 1),
+            'final_grade': final_grade_value,
+            'final_grade_points': final_grade_points,
+            'progress_percentage': round(progress_percentage, 1),
+            'progress_status': progress_status,
+            'recent_grades': course_grades[:5],
+            'pending_assignments': course_assignments.filter(
+                due_date__gte=timezone.now()
+            ).exclude(
+                id__in=course_submissions.filter(status='submitted').values_list('assignment_id', flat=True)
+            ).count()
+        }
+        
+        course_progress.append(course_data)
+        
+        # Update overall stats
+        overall_stats['total_courses'] += 1
+        overall_stats['total_credits'] += course.credits
+        if final_grade_value and final_grade_points > 0:
+            overall_stats['completed_credits'] += course.credits
+        overall_stats['total_assignments'] += total_assignments
+        overall_stats['completed_assignments'] += completed_assignments
+    
+    # Calculate overall GPA
+    total_grade_points = 0
+    total_credits_with_grades = 0
+    for course_data in course_progress:
+        if course_data['final_grade_points'] > 0:
+            total_grade_points += course_data['final_grade_points'] * course_data['course'].credits
+            total_credits_with_grades += course_data['course'].credits
+    
+    overall_stats['gpa'] = round(total_grade_points / total_credits_with_grades, 2) if total_credits_with_grades > 0 else 0
+    overall_stats['average_grade'] = round(
+        sum(course_data['average_grade'] for course_data in course_progress) / len(course_progress), 1
+    ) if course_progress else 0
+    
+    # Calculate completion percentage
+    completion_percentage = (overall_stats['completed_credits'] / overall_stats['total_credits'] * 100) if overall_stats['total_credits'] > 0 else 0
+    overall_stats['completion_percentage'] = round(completion_percentage, 1)
+    
+    # Get recent activity (recent grades and submissions)
+    recent_grades = Grade.objects.filter(
+        student=request.user
+    ).select_related('course').order_by('-date_graded')[:10]
+    
+    recent_submissions = AssignmentSubmission.objects.filter(
+        student=request.user,
+        status='submitted'
+    ).select_related('assignment', 'assignment__course').order_by('-submitted_at')[:10]
+    
+    context = {
+        'course_progress': course_progress,
+        'overall_stats': overall_stats,
+        'recent_grades': recent_grades,
+        'recent_submissions': recent_submissions,
+    }
+    
+    return render(request, 'MainInterface/academic_progress.html', context)
+
+@login_required
+def download_progress_report(request):
+    """Generate and download PDF progress report"""
+    try:
+        if request.user.userprofile.user_type != 'student':
+            messages.error(request, 'Access denied. Student access required.')
+            return redirect('dashboard')
+    except UserProfile.DoesNotExist:
+        messages.error(request, 'User profile not found.')
+        return redirect('dashboard')
+    
+    # Get the same data as the progress view
+    enrolled_courses = Course.objects.filter(
+        enrollments__student=request.user,
+        enrollments__status='enrolled'
+    ).prefetch_related('grades', 'assignments', 'assignments__submissions')
+    
+    # Calculate progress for each course (same logic as progress view)
+    course_progress = []
+    overall_stats = {
+        'total_courses': 0,
+        'total_credits': 0,
+        'completed_credits': 0,
+        'total_assignments': 0,
+        'completed_assignments': 0,
+        'average_grade': 0,
+        'gpa': 0
+    }
+    
+    for course in enrolled_courses:
+        # Get grades for this course
+        course_grades = Grade.objects.filter(
+            student=request.user,
+            course=course
+        ).order_by('-date_graded')
+        
+        # Get assignments for this course
+        course_assignments = Assignment.objects.filter(
+            course=course,
+            status='published'
+        )
+        
+        # Get submissions for this course
+        course_submissions = AssignmentSubmission.objects.filter(
+            student=request.user,
+            assignment__course=course
+        )
+        
+        # Calculate assignment completion rate
+        total_assignments = course_assignments.count()
+        completed_assignments = course_submissions.filter(status='submitted').count()
+        assignment_completion = (completed_assignments / total_assignments * 100) if total_assignments > 0 else 0
+        
+        # Calculate grade statistics
+        graded_assignments = course_submissions.filter(status='graded', grade__isnull=False)
+        if graded_assignments.exists():
+            grades_sum = sum(float(sub.grade) for sub in graded_assignments)
+            average_grade = grades_sum / graded_assignments.count()
+        else:
+            average_grade = 0
+        
+        # Get final grade if available
+        final_grade = course_grades.filter(grade_type='final_grade').first()
+        final_grade_value = final_grade.grade_value if final_grade else None
+        final_grade_points = Grade.GRADE_POINTS.get(final_grade_value, 0) if final_grade_value else 0
+        
+        # Calculate overall progress
+        progress_percentage = 0
+        if total_assignments > 0:
+            assignment_weight = 0.7
+            grade_weight = 0.3
+            progress_percentage = (
+                (assignment_completion * assignment_weight) +
+                (average_grade * grade_weight)
+            )
+            progress_percentage = min(progress_percentage, 100)
+        
+        # Determine progress status
+        if progress_percentage >= 80:
+            progress_status = 'Excellent'
+        elif progress_percentage >= 60:
+            progress_status = 'Good'
+        elif progress_percentage >= 40:
+            progress_status = 'Average'
+        else:
+            progress_status = 'Needs Improvement'
+        
+        course_data = {
+            'course': course,
+            'total_assignments': total_assignments,
+            'completed_assignments': completed_assignments,
+            'assignment_completion': round(assignment_completion, 1),
+            'average_grade': round(average_grade, 1),
+            'final_grade': final_grade_value,
+            'final_grade_points': final_grade_points,
+            'progress_percentage': round(progress_percentage, 1),
+            'progress_status': progress_status,
+            'recent_grades': course_grades[:5],
+        }
+        
+        course_progress.append(course_data)
+        
+        # Update overall stats
+        overall_stats['total_courses'] += 1
+        overall_stats['total_credits'] += course.credits
+        if final_grade_value and final_grade_points > 0:
+            overall_stats['completed_credits'] += course.credits
+        overall_stats['total_assignments'] += total_assignments
+        overall_stats['completed_assignments'] += completed_assignments
+    
+    # Calculate overall GPA
+    total_grade_points = 0
+    total_credits_with_grades = 0
+    for course_data in course_progress:
+        if course_data['final_grade_points'] > 0:
+            total_grade_points += course_data['final_grade_points'] * course_data['course'].credits
+            total_credits_with_grades += course_data['course'].credits
+    
+    overall_stats['gpa'] = round(total_grade_points / total_credits_with_grades, 2) if total_credits_with_grades > 0 else 0
+    overall_stats['average_grade'] = round(
+        sum(course_data['average_grade'] for course_data in course_progress) / len(course_progress), 1
+    ) if course_progress else 0
+    
+    completion_percentage = (overall_stats['completed_credits'] / overall_stats['total_credits'] * 100) if overall_stats['total_credits'] > 0 else 0
+    overall_stats['completion_percentage'] = round(completion_percentage, 1)
+    
+    # Create PDF
+    response = HttpResponse(content_type='application/pdf')
+    filename = f"academic_progress_report_{request.user.username}_{datetime.now().strftime('%Y%m%d')}.pdf"
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    
+    # Create PDF document
+    doc = SimpleDocTemplate(response, pagesize=A4)
+    styles = getSampleStyleSheet()
+    story = []
+    
+    # Custom styles
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=24,
+        spaceAfter=30,
+        alignment=TA_CENTER,
+        textColor=colors.HexColor('#007bff')
+    )
+    
+    heading_style = ParagraphStyle(
+        'CustomHeading',
+        parent=styles['Heading2'],
+        fontSize=16,
+        spaceAfter=12,
+        textColor=colors.HexColor('#333333')
+    )
+    
+    # Header
+    story.append(Paragraph("Academic Progress Report", title_style))
+    story.append(Spacer(1, 12))
+    
+    # Student information
+    student_info = [
+        ['Student Name:', f"{request.user.get_full_name() or request.user.username}"],
+        ['Student ID:', request.user.username],
+        ['Report Date:', datetime.now().strftime('%B %d, %Y')],
+        ['Academic Year:', '2025']
+    ]
+    
+    student_table = Table(student_info, colWidths=[2*inch, 3*inch])
+    student_table.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 12),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    story.append(student_table)
+    story.append(Spacer(1, 20))
+    
+    # Overall Statistics
+    story.append(Paragraph("Overall Academic Summary", heading_style))
+    story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#007bff')))
+    story.append(Spacer(1, 12))
+    
+    overall_data = [
+        ['Metric', 'Value'],
+        ['Current GPA', f"{overall_stats['gpa']}/4.0"],
+        ['Completion Rate', f"{overall_stats['completion_percentage']}%"],
+        ['Credits Completed', f"{overall_stats['completed_credits']}/{overall_stats['total_credits']}"],
+        ['Assignments Completed', f"{overall_stats['completed_assignments']}/{overall_stats['total_assignments']}"],
+        ['Average Grade', f"{overall_stats['average_grade']}%"]
+    ]
+    
+    overall_table = Table(overall_data, colWidths=[2.5*inch, 2.5*inch])
+    overall_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#007bff')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 11),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+    ]))
+    story.append(overall_table)
+    story.append(Spacer(1, 20))
+    
+    # Course Progress
+    story.append(Paragraph("Course Progress Details", heading_style))
+    story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#007bff')))
+    story.append(Spacer(1, 12))
+    
+    if course_progress:
+        course_data = [['Course', 'Progress', 'Assignments', 'Avg Grade', 'Final Grade', 'Status']]
+        
+        for course_info in course_progress:
+            course_data.append([
+                f"{course_info['course'].course_code}\n{course_info['course'].course_name}",
+                f"{course_info['progress_percentage']}%",
+                f"{course_info['completed_assignments']}/{course_info['total_assignments']}",
+                f"{course_info['average_grade']}%",
+                course_info['final_grade'] or 'N/A',
+                course_info['progress_status']
+            ])
+        
+        course_table = Table(course_data, colWidths=[2*inch, 0.8*inch, 0.8*inch, 0.8*inch, 0.8*inch, 1*inch])
+        course_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#007bff')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ]))
+        story.append(course_table)
+    else:
+        story.append(Paragraph("No courses enrolled.", styles['Normal']))
+    
+    story.append(Spacer(1, 20))
+    
+    # Performance Insights
+    story.append(Paragraph("Performance Insights", heading_style))
+    story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#007bff')))
+    story.append(Spacer(1, 12))
+    
+    if overall_stats['gpa'] >= 3.5:
+        insight_text = f"<b>Excellent Performance!</b> You're maintaining a high GPA of {overall_stats['gpa']}. Keep up the great work!"
+        insight_color = colors.HexColor('#28a745')
+    elif overall_stats['gpa'] >= 3.0:
+        insight_text = f"<b>Good Progress!</b> Your GPA of {overall_stats['gpa']} shows solid academic performance. Consider focusing on areas for improvement."
+        insight_color = colors.HexColor('#17a2b8')
+    elif overall_stats['gpa'] >= 2.0:
+        insight_text = f"<b>Room for Improvement.</b> Your GPA of {overall_stats['gpa']} suggests you should focus more on your studies and seek help if needed."
+        insight_color = colors.HexColor('#ffc107')
+    elif overall_stats['gpa'] > 0:
+        insight_text = f"<b>Needs Attention!</b> Your GPA of {overall_stats['gpa']} requires immediate attention. Consider meeting with academic advisors."
+        insight_color = colors.HexColor('#dc3545')
+    else:
+        insight_text = "No grades available yet. Keep working on your assignments and exams."
+        insight_color = colors.HexColor('#6c757d')
+    
+    insight_style = ParagraphStyle(
+        'InsightStyle',
+        parent=styles['Normal'],
+        fontSize=12,
+        spaceAfter=12,
+        leftIndent=20,
+        rightIndent=20,
+        textColor=insight_color
+    )
+    
+    story.append(Paragraph(insight_text, insight_style))
+    story.append(Spacer(1, 12))
+    
+    # Recommendations
+    recommendations = []
+    if overall_stats['completed_assignments'] < overall_stats['total_assignments']:
+        pending = overall_stats['total_assignments'] - overall_stats['completed_assignments']
+        recommendations.append(f"• Complete {pending} pending assignment{'s' if pending > 1 else ''}")
+    
+    if overall_stats['gpa'] < 3.0:
+        recommendations.append("• Consider attending office hours for additional help")
+        recommendations.append("• Form study groups with classmates")
+        recommendations.append("• Utilize campus tutoring resources")
+    
+    if overall_stats['completion_percentage'] < 100:
+        recommendations.append("• Stay consistent with course attendance")
+        recommendations.append("• Keep track of assignment due dates")
+    
+    if recommendations:
+        story.append(Paragraph("Recommendations:", heading_style))
+        for rec in recommendations:
+            story.append(Paragraph(rec, styles['Normal']))
+            story.append(Spacer(1, 6))
+    
+    # Footer
+    story.append(Spacer(1, 30))
+    footer_style = ParagraphStyle(
+        'Footer',
+        parent=styles['Normal'],
+        fontSize=10,
+        alignment=TA_CENTER,
+        textColor=colors.grey
+    )
+    story.append(HRFlowable(width="100%", thickness=1, color=colors.grey))
+    story.append(Spacer(1, 12))
+    story.append(Paragraph("This report was generated automatically by the Database System.", footer_style))
+    story.append(Paragraph(f"Generated on {datetime.now().strftime('%B %d, %Y at %I:%M %p')}", footer_style))
+    
+    # Build PDF
+    doc.build(story)
+    
+    return response
+
+
+@login_required
+def student_management_view(request):
+    """View for lecturers to manage students and view enrollment reports"""
+    try:
+        # Check if user is a lecturer
+        if request.user.userprofile.user_type != 'lecturer':
+            messages.error(request, 'Access denied. Lecturer access required.')
+            return redirect('dashboard')
+    except UserProfile.DoesNotExist:
+        messages.error(request, 'User profile not found.')
+        return redirect('dashboard')
+    
+    # Get lecturer's courses
+    lecturer_courses = Course.objects.filter(lecturer=request.user.userprofile)
+    
+    # Get all enrollments for lecturer's courses
+    enrollments = Enrollment.objects.filter(
+        course__in=lecturer_courses
+    ).select_related('student', 'course').order_by('course__course_code', 'student__last_name')
+    
+    # Filter by course if specified
+    course_filter = request.GET.get('course')
+    if course_filter:
+        enrollments = enrollments.filter(course_id=course_filter)
+    
+    # Filter by status if specified
+    status_filter = request.GET.get('status')
+    if status_filter:
+        enrollments = enrollments.filter(status=status_filter)
+    
+    # Search by student name
+    search_query = request.GET.get('search')
+    if search_query:
+        enrollments = enrollments.filter(
+            student__first_name__icontains=search_query
+        ) | enrollments.filter(
+            student__last_name__icontains=search_query
+        )
+    
+    # Calculate statistics
+    total_students = enrollments.filter(status='enrolled').count()
+    pending_enrollments = enrollments.filter(status='pending').count()
+    waitlisted_students = enrollments.filter(status='waitlisted').count()
+    
+    # Group enrollments by course for better organization
+    course_enrollments = {}
+    for enrollment in enrollments:
+        course_code = enrollment.course.course_code
+        if course_code not in course_enrollments:
+            course_enrollments[course_code] = {
+                'course': enrollment.course,
+                'enrollments': []
+            }
+        course_enrollments[course_code]['enrollments'].append(enrollment)
+    
+    context = {
+        'enrollments': enrollments,
+        'course_enrollments': course_enrollments,
+        'lecturer_courses': lecturer_courses,
+        'total_students': total_students,
+        'pending_enrollments': pending_enrollments,
+        'waitlisted_students': waitlisted_students,
+        'course_filter': course_filter,
+        'status_filter': status_filter,
+        'search_query': search_query,
+    }
+    
+    return render(request, 'MainInterface/student_management.html', context)
+
+
+@login_required
+def download_enrollment_report(request):
+    """Generate and download enrollment report as PDF"""
+    try:
+        # Check if user is a lecturer
+        if request.user.userprofile.user_type != 'lecturer':
+            messages.error(request, 'Access denied. Lecturer access required.')
+            return redirect('dashboard')
+    except UserProfile.DoesNotExist:
+        messages.error(request, 'User profile not found.')
+        return redirect('dashboard')
+    
+    # Create HTTP response with PDF headers
+    response = HttpResponse(content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="enrollment_report_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pdf"'
+    
+    # Create PDF
+    doc = SimpleDocTemplate(response, pagesize=letter, 
+                          rightMargin=72, leftMargin=72, 
+                          topMargin=72, bottomMargin=18)
+    
+    # Container for the 'Flowable' objects
+    story = []
+    
+    # Define styles
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=24,
+        spaceAfter=30,
+        alignment=TA_CENTER,
+        textColor=colors.HexColor('#2c3e50')
+    )
+    
+    heading_style = ParagraphStyle(
+        'CustomHeading',
+        parent=styles['Heading2'],
+        fontSize=16,
+        spaceAfter=12,
+        textColor=colors.HexColor('#2c3e50')
+    )
+    
+    # Title
+    story.append(Paragraph("Student Enrollment Report", title_style))
+    story.append(Paragraph(f"Lecturer: {request.user.get_full_name()}", styles['Normal']))
+    story.append(Paragraph(f"Generated: {datetime.now().strftime('%B %d, %Y at %I:%M %p')}", styles['Normal']))
+    story.append(Spacer(1, 20))
+    
+    # Get lecturer's courses and enrollments
+    lecturer_courses = Course.objects.filter(lecturer=request.user.userprofile)
+    
+    # Summary statistics
+    story.append(Paragraph("Summary Statistics", heading_style))
+    
+    total_courses = lecturer_courses.count()
+    total_enrollments = Enrollment.objects.filter(course__in=lecturer_courses, status='enrolled').count()
+    pending_enrollments = Enrollment.objects.filter(course__in=lecturer_courses, status='pending').count()
+    waitlisted_students = Enrollment.objects.filter(course__in=lecturer_courses, status='waitlisted').count()
+    
+    summary_data = [
+        ['Metric', 'Count'],
+        ['Total Courses', str(total_courses)],
+        ['Total Enrolled Students', str(total_enrollments)],
+        ['Pending Enrollments', str(pending_enrollments)],
+        ['Waitlisted Students', str(waitlisted_students)],
+    ]
+    
+    summary_table = Table(summary_data, colWidths=[3*inch, 2*inch])
+    summary_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 12),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+    ]))
+    
+    story.append(summary_table)
+    story.append(Spacer(1, 20))
+    
+    # Course-by-course breakdown
+    story.append(Paragraph("Enrollment Details by Course", heading_style))
+    
+    for course in lecturer_courses:
+        story.append(Paragraph(f"Course: {course.course_code} - {course.course_name}", styles['Heading3']))
+        
+        enrollments = Enrollment.objects.filter(course=course).select_related('student')
+        
+        if enrollments.exists():
+            # Create table data
+            enrollment_data = [['Student Name', 'Email', 'Status', 'Enrollment Date']]
+            
+            for enrollment in enrollments:
+                student_name = f"{enrollment.student.first_name} {enrollment.student.last_name}"
+                enrollment_data.append([
+                    student_name,
+                    enrollment.student.email,
+                    enrollment.status.title(),
+                    enrollment.enrollment_date.strftime('%Y-%m-%d')
+                ])
+            
+            # Create table
+            enrollment_table = Table(enrollment_data, colWidths=[2*inch, 2.5*inch, 1*inch, 1.5*inch])
+            enrollment_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#28a745')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                ('FONTSIZE', (0, 1), (-1, -1), 9),
+            ]))
+            
+            story.append(enrollment_table)
+        else:
+            story.append(Paragraph("No enrollments for this course.", styles['Normal']))
+        
+        story.append(Spacer(1, 15))
+    
+    # Footer
+    story.append(Spacer(1, 30))
+    footer_style = ParagraphStyle(
+        'Footer',
+        parent=styles['Normal'],
+        fontSize=10,
+        alignment=TA_CENTER,
+        textColor=colors.grey
+    )
+    story.append(HRFlowable(width="100%", thickness=1, color=colors.grey))
+    story.append(Spacer(1, 12))
+    story.append(Paragraph("This report was generated automatically by the Database System.", footer_style))
+    story.append(Paragraph(f"Generated on {datetime.now().strftime('%B %d, %Y at %I:%M %p')}", footer_style))
+    
+    # Build PDF
+    doc.build(story)
+    
+    return response
+
+
+@login_required
+def approve_enrollment_view(request, enrollment_id):
+    """Approve a pending enrollment"""
+    if request.method == 'POST':
+        try:
+            # Check if user is a lecturer
+            if request.user.userprofile.user_type != 'lecturer':
+                return JsonResponse({'success': False, 'error': 'Access denied'})
+            
+            enrollment = get_object_or_404(Enrollment, id=enrollment_id)
+            
+            # Check if the lecturer owns this course
+            if enrollment.course.lecturer != request.user.userprofile:
+                return JsonResponse({'success': False, 'error': 'Access denied'})
+            
+            # Check if course has space
+            if enrollment.course.get_enrolled_count() >= enrollment.course.max_students:
+                return JsonResponse({'success': False, 'error': 'Course is full'})
+            
+            # Approve the enrollment
+            enrollment.status = 'enrolled'
+            enrollment.save()
+            
+            return JsonResponse({'success': True, 'message': 'Enrollment approved successfully'})
+            
+        except UserProfile.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'User profile not found'})
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)})
+    
+    return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+
+@login_required
+def reject_enrollment_view(request, enrollment_id):
+    """Reject a pending enrollment"""
+    if request.method == 'POST':
+        try:
+            # Check if user is a lecturer
+            if request.user.userprofile.user_type != 'lecturer':
+                return JsonResponse({'success': False, 'error': 'Access denied'})
+            
+            enrollment = get_object_or_404(Enrollment, id=enrollment_id)
+            
+            # Check if the lecturer owns this course
+            if enrollment.course.lecturer != request.user.userprofile:
+                return JsonResponse({'success': False, 'error': 'Access denied'})
+            
+            # Reject the enrollment by deleting it
+            enrollment.delete()
+            
+            return JsonResponse({'success': True, 'message': 'Enrollment rejected successfully'})
+            
+        except UserProfile.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'User profile not found'})
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)})
+    
+    return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+
+@login_required
+def approve_enrollment_view(request, enrollment_id):
+    """Approve a pending enrollment"""
+    if request.method == 'POST':
+        try:
+            # Check if user is a lecturer
+            if request.user.userprofile.user_type != 'lecturer':
+                return JsonResponse({'success': False, 'error': 'Access denied'})
+            
+            enrollment = get_object_or_404(Enrollment, id=enrollment_id)
+            
+            # Check if the lecturer owns this course
+            if enrollment.course.lecturer != request.user.userprofile:
+                return JsonResponse({'success': False, 'error': 'Access denied'})
+            
+            # Check if course has space
+            if enrollment.course.get_enrolled_count() >= enrollment.course.max_students:
+                return JsonResponse({'success': False, 'error': 'Course is full'})
+            
+            # Approve the enrollment
+            enrollment.status = 'enrolled'
+            enrollment.save()
+            
+            return JsonResponse({'success': True, 'message': 'Enrollment approved successfully'})
+            
+        except UserProfile.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'User profile not found'})
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)})
+    
+    return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+
+@login_required
+def reject_enrollment_view(request, enrollment_id):
+    """Reject a pending enrollment"""
+    if request.method == 'POST':
+        try:
+            # Check if user is a lecturer
+            if request.user.userprofile.user_type != 'lecturer':
+                return JsonResponse({'success': False, 'error': 'Access denied'})
+            
+            enrollment = get_object_or_404(Enrollment, id=enrollment_id)
+            
+            # Check if the lecturer owns this course
+            if enrollment.course.lecturer != request.user.userprofile:
+                return JsonResponse({'success': False, 'error': 'Access denied'})
+            
+            # Reject the enrollment by deleting it
+            enrollment.delete()
+            
+            return JsonResponse({'success': True, 'message': 'Enrollment rejected successfully'})
+            
+        except UserProfile.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'User profile not found'})
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)})
+    
+    return JsonResponse({'success': False, 'error': 'Invalid request method'})

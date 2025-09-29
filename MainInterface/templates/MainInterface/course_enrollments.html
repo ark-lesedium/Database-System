@@ -1,0 +1,578 @@
+{% extends 'MainInterface/base.html' %}
+
+{% block title %}Manage Enrollments - {{ course.course_name }}{% endblock %}
+{% block header %}
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span>Manage Enrollments</span>
+        <div>
+            <a href="{% url 'manage_courses' %}" class="btn btn-secondary">Back to Courses</a>
+            <a href="{% url 'lecturer_dashboard' %}" class="btn btn-secondary">Dashboard</a>
+            <a href="{% url 'logout' %}" class="btn btn-danger">Logout</a>
+        </div>
+    </div>
+{% endblock %}
+
+{% block content %}
+<style>
+    .enrollments-container {
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+    
+    .btn {
+        padding: 8px 16px;
+        border-radius: 4px;
+        text-decoration: none;
+        font-size: 14px;
+        margin-right: 10px;
+        display: inline-block;
+        border: none;
+        cursor: pointer;
+        transition: all 0.3s;
+    }
+    
+    .btn-secondary {
+        background-color: #6c757d;
+        color: white;
+    }
+    
+    .btn-secondary:hover {
+        background-color: #545b62;
+        transform: translateY(-1px);
+    }
+    
+    .btn-danger {
+        background-color: #dc3545;
+        color: white;
+    }
+    
+    .btn-danger:hover {
+        background-color: #c82333;
+        transform: translateY(-1px);
+    }
+    
+    .btn-success {
+        background-color: #28a745;
+        color: white;
+    }
+    
+    .btn-success:hover {
+        background-color: #218838;
+        transform: translateY(-1px);
+    }
+    
+    .btn-warning {
+        background-color: #ffc107;
+        color: #212529;
+    }
+    
+    .btn-warning:hover {
+        background-color: #e0a800;
+        transform: translateY(-1px);
+    }
+    
+    .btn-info {
+        background-color: #17a2b8;
+        color: white;
+    }
+    
+    .btn-info:hover {
+        background-color: #138496;
+        transform: translateY(-1px);
+    }
+    
+    .btn-small {
+        padding: 6px 12px;
+        font-size: 12px;
+    }
+    
+    .course-header {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        padding: 25px;
+        margin-bottom: 20px;
+    }
+    
+    .course-title {
+        font-size: 24px;
+        font-weight: bold;
+        color: #333;
+        margin: 0 0 10px 0;
+    }
+    
+    .course-code {
+        background: #28a745;
+        color: white;
+        padding: 4px 12px;
+        border-radius: 4px;
+        font-family: monospace;
+        font-size: 14px;
+        display: inline-block;
+        margin-bottom: 15px;
+    }
+    
+    .course-description {
+        color: #666;
+        margin-bottom: 20px;
+        line-height: 1.5;
+    }
+    
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 15px;
+        margin-bottom: 20px;
+    }
+    
+    .stat-card {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        text-align: center;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .stat-number {
+        font-size: 28px;
+        font-weight: bold;
+        margin: 0;
+    }
+    
+    .stat-number.enrolled {
+        color: #28a745;
+    }
+    
+    .stat-number.pending {
+        color: #ffc107;
+    }
+    
+    .stat-number.rejected {
+        color: #dc3545;
+    }
+    
+    .stat-number.available {
+        color: #17a2b8;
+    }
+    
+    .stat-number.full {
+        color: #dc3545;
+    }
+    
+    .stat-label {
+        color: #666;
+        margin: 5px 0 0 0;
+        font-size: 14px;
+    }
+    
+    .enrollments-section {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        overflow: hidden;
+        margin-bottom: 20px;
+    }
+    
+    .section-header {
+        padding: 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid #e9ecef;
+    }
+    
+    .section-header.pending {
+        background: #fff3cd;
+        border-left: 4px solid #ffc107;
+    }
+    
+    .section-header.enrolled {
+        background: #d4edda;
+        border-left: 4px solid #28a745;
+    }
+    
+    .section-header.rejected {
+        background: #f8d7da;
+        border-left: 4px solid #dc3545;
+    }
+    
+    .section-title {
+        font-size: 18px;
+        font-weight: bold;
+        margin: 0;
+        color: #333;
+    }
+    
+    .section-count {
+        background: rgba(0,0,0,0.1);
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 14px;
+        font-weight: bold;
+    }
+    
+    .enrollments-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    
+    .enrollments-table th,
+    .enrollments-table td {
+        padding: 15px;
+        text-align: left;
+        border-bottom: 1px solid #e9ecef;
+    }
+    
+    .enrollments-table th {
+        background-color: #f8f9fa;
+        font-weight: bold;
+        color: #333;
+    }
+    
+    .enrollments-table tr:hover {
+        background-color: #f8f9fa;
+    }
+    
+    .student-info {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    
+    .student-avatar {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: #28a745;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        font-size: 16px;
+    }
+    
+    .student-details h4 {
+        margin: 0;
+        font-size: 16px;
+        color: #333;
+    }
+    
+    .student-details p {
+        margin: 0;
+        font-size: 14px;
+        color: #666;
+    }
+    
+    .enrollment-date {
+        color: #666;
+        font-size: 14px;
+    }
+    
+    .enrollment-actions {
+        white-space: nowrap;
+    }
+    
+    .enrollment-actions .btn {
+        margin-right: 5px;
+        margin-bottom: 5px;
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 40px 20px;
+        color: #666;
+    }
+    
+    .empty-icon {
+        font-size: 48px;
+        margin-bottom: 15px;
+    }
+    
+    .empty-message {
+        font-size: 16px;
+        margin-bottom: 10px;
+    }
+    
+    .empty-description {
+        font-size: 14px;
+        color: #999;
+    }
+    
+    .alert {
+        padding: 15px;
+        border-radius: 6px;
+        margin-bottom: 20px;
+        border-left: 4px solid;
+    }
+    
+    .alert-success {
+        background-color: #d4edda;
+        color: #155724;
+        border-left-color: #28a745;
+    }
+    
+    .alert-error {
+        background-color: #f8d7da;
+        color: #721c24;
+        border-left-color: #dc3545;
+    }
+    
+    .capacity-warning {
+        background: #fff3cd;
+        border: 1px solid #ffeaa7;
+        border-radius: 6px;
+        padding: 15px;
+        margin-bottom: 20px;
+        color: #856404;
+    }
+    
+    .capacity-warning .warning-icon {
+        color: #ffc107;
+        margin-right: 8px;
+    }
+    
+    @media (max-width: 768px) {
+        .stats-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+        
+        .enrollments-table {
+            font-size: 14px;
+        }
+        
+        .enrollments-table th,
+        .enrollments-table td {
+            padding: 10px 8px;
+        }
+        
+        .enrollment-actions .btn {
+            padding: 4px 8px;
+            font-size: 10px;
+        }
+        
+        .student-info {
+            flex-direction: column;
+            text-align: center;
+        }
+        
+        .student-avatar {
+            margin: 0 auto;
+        }
+    }
+</style>
+
+<div class="enrollments-container">
+    <!-- Display Messages -->
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{% if message.tags == 'error' %}error{% else %}{{ message.tags }}{% endif %}">
+                {{ message }}
+            </div>
+        {% endfor %}
+    {% endif %}
+    
+    <!-- Course Header -->
+    <div class="course-header">
+        <div class="course-code">{{ course.course_code }}</div>
+        <h1 class="course-title">{{ course.course_name }}</h1>
+        {% if course.description %}
+            <p class="course-description">{{ course.description }}</p>
+        {% endif %}
+    </div>
+    
+    <!-- Enrollment Statistics -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <p class="stat-number enrolled">{{ enrolled_count }}</p>
+            <p class="stat-label">Enrolled Students</p>
+        </div>
+        <div class="stat-card">
+            <p class="stat-number pending">{{ pending_count }}</p>
+            <p class="stat-label">Pending Approvals</p>
+        </div>
+        <div class="stat-card">
+            <p class="stat-number rejected">{{ rejected_count }}</p>
+            <p class="stat-label">Rejected</p>
+        </div>
+        <div class="stat-card">
+            <p class="stat-number {% if is_full %}full{% else %}available{% endif %}">{{ available_slots }}</p>
+            <p class="stat-label">Available Slots</p>
+        </div>
+    </div>
+    
+    <!-- Capacity Warning -->
+    {% if is_full %}
+        <div class="capacity-warning">
+            <span class="warning-icon">⚠️</span>
+            <strong>Course is at maximum capacity!</strong> New enrollment requests cannot be approved until space becomes available.
+        </div>
+    {% endif %}
+    
+    <!-- Pending Enrollments -->
+    {% if pending_enrollments %}
+        <div class="enrollments-section">
+            <div class="section-header pending">
+                <h2 class="section-title">Pending Approvals</h2>
+                <span class="section-count">{{ pending_count }}</span>
+            </div>
+            <table class="enrollments-table">
+                <thead>
+                    <tr>
+                        <th>Student</th>
+                        <th>Enrollment Date</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for enrollment in pending_enrollments %}
+                        <tr>
+                            <td>
+                                <div class="student-info">
+                                    <div class="student-avatar">
+                                        {{ enrollment.student.user.first_name|first|default:enrollment.student.user.username|first }}
+                                    </div>
+                                    <div class="student-details">
+                                        <h4>{{ enrollment.student.user.get_full_name|default:enrollment.student.user.username }}</h4>
+                                        <p>{{ enrollment.student.user.email }}</p>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                <span class="enrollment-date">{{ enrollment.created_at|date:"M d, Y" }}</span>
+                            </td>
+                            <td class="enrollment-actions">
+                                <form method="post" style="display: inline;">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="enrollment_id" value="{{ enrollment.id }}">
+                                    <button type="submit" name="action" value="approve" class="btn btn-success btn-small"
+                                            {% if is_full %}disabled title="Course is full"{% endif %}>
+                                        ✓ Approve
+                                    </button>
+                                </form>
+                                <form method="post" style="display: inline;">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="enrollment_id" value="{{ enrollment.id }}">
+                                    <button type="submit" name="action" value="reject" class="btn btn-danger btn-small">
+                                        ✗ Reject
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% endif %}
+    
+    <!-- Active Enrollments -->
+    {% if active_enrollments %}
+        <div class="enrollments-section">
+            <div class="section-header enrolled">
+                <h2 class="section-title">Enrolled Students</h2>
+                <span class="section-count">{{ enrolled_count }}</span>
+            </div>
+            <table class="enrollments-table">
+                <thead>
+                    <tr>
+                        <th>Student</th>
+                        <th>Enrollment Date</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for enrollment in active_enrollments %}
+                        <tr>
+                            <td>
+                                <div class="student-info">
+                                    <div class="student-avatar">
+                                        {{ enrollment.student.user.first_name|first|default:enrollment.student.user.username|first }}
+                                    </div>
+                                    <div class="student-details">
+                                        <h4>{{ enrollment.student.user.get_full_name|default:enrollment.student.user.username }}</h4>
+                                        <p>{{ enrollment.student.user.email }}</p>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                <span class="enrollment-date">{{ enrollment.created_at|date:"M d, Y" }}</span>
+                            </td>
+                            <td class="enrollment-actions">
+                                <form method="post" style="display: inline;">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="enrollment_id" value="{{ enrollment.id }}">
+                                    <button type="submit" name="action" value="unenroll" class="btn btn-warning btn-small"
+                                            onclick="return confirm('Remove this student from the course?')">
+                                        Remove
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% endif %}
+    
+    <!-- Rejected Enrollments -->
+    {% if rejected_enrollments %}
+        <div class="enrollments-section">
+            <div class="section-header rejected">
+                <h2 class="section-title">Rejected Enrollments</h2>
+                <span class="section-count">{{ rejected_count }}</span>
+            </div>
+            <table class="enrollments-table">
+                <thead>
+                    <tr>
+                        <th>Student</th>
+                        <th>Enrollment Date</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for enrollment in rejected_enrollments %}
+                        <tr>
+                            <td>
+                                <div class="student-info">
+                                    <div class="student-avatar">
+                                        {{ enrollment.student.user.first_name|first|default:enrollment.student.user.username|first }}
+                                    </div>
+                                    <div class="student-details">
+                                        <h4>{{ enrollment.student.user.get_full_name|default:enrollment.student.user.username }}</h4>
+                                        <p>{{ enrollment.student.user.email }}</p>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                <span class="enrollment-date">{{ enrollment.created_at|date:"M d, Y" }}</span>
+                            </td>
+                            <td class="enrollment-actions">
+                                <form method="post" style="display: inline;">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="enrollment_id" value="{{ enrollment.id }}">
+                                    <button type="submit" name="action" value="reactivate" class="btn btn-info btn-small"
+                                            {% if is_full %}disabled title="Course is full"{% endif %}>
+                                        Reactivate
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% endif %}
+    
+    <!-- Empty State -->
+    {% if not pending_enrollments and not active_enrollments and not rejected_enrollments %}
+        <div class="enrollments-section">
+            <div class="empty-state">
+                <div class="empty-icon">👥</div>
+                <div class="empty-message">No enrollments yet</div>
+                <div class="empty-description">Students haven't enrolled in this course yet.</div>
+            </div>
+        </div>
+    {% endif %}
+</div>
+
+{% endblock %}

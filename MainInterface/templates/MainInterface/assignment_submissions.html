@@ -1,0 +1,395 @@
+{% extends 'MainInterface/base.html' %}
+
+{% block title %}Assignment Submissions - Database System{% endblock %}
+{% block header %}
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span>Assignment Submissions</span>
+        <a href="{% url 'lecturer_assignments' %}" style="background-color: #6c757d; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px;">Back to Assignments</a>
+    </div>
+{% endblock %}
+
+{% block content %}
+<style>
+    .submissions-container {
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+    
+    .assignment-header {
+        background: white;
+        padding: 30px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        margin-bottom: 30px;
+    }
+    
+    .assignment-title {
+        font-size: 24px;
+        font-weight: bold;
+        color: #333;
+        margin: 0 0 10px 0;
+    }
+    
+    .assignment-course {
+        color: #007bff;
+        font-size: 16px;
+        font-weight: 500;
+        margin: 0 0 15px 0;
+    }
+    
+    .assignment-meta {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 20px;
+    }
+    
+    .meta-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    
+    .meta-label {
+        font-weight: bold;
+        color: #666;
+    }
+    
+    .meta-value {
+        color: #333;
+    }
+    
+    .stats-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 15px;
+        margin-bottom: 30px;
+    }
+    
+    .stat-card {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        text-align: center;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .stat-number {
+        font-size: 28px;
+        font-weight: bold;
+        color: #007bff;
+        margin: 0;
+    }
+    
+    .stat-label {
+        color: #666;
+        margin: 5px 0 0 0;
+        font-size: 12px;
+    }
+    
+    .filters {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        margin-bottom: 30px;
+    }
+    
+    .filter-group {
+        display: flex;
+        gap: 15px;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+    
+    .filter-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    
+    .filter-select {
+        padding: 8px 12px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 14px;
+    }
+    
+    .submissions-list {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .list-header {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 8px 8px 0 0;
+        border-left: 4px solid #007bff;
+    }
+    
+    .list-header h3 {
+        margin: 0;
+        color: #333;
+        font-size: 18px;
+    }
+    
+    .submission-item {
+        padding: 20px;
+        border-bottom: 1px solid #eee;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .submission-item:last-child {
+        border-bottom: none;
+    }
+    
+    .submission-info {
+        flex: 1;
+    }
+    
+    .student-name {
+        font-size: 16px;
+        font-weight: bold;
+        color: #333;
+        margin: 0 0 5px 0;
+    }
+    
+    .submission-meta {
+        color: #666;
+        font-size: 14px;
+        margin: 0 0 5px 0;
+    }
+    
+    .submission-status {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    
+    .status-badge {
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: bold;
+        text-transform: uppercase;
+    }
+    
+    .status-submitted {
+        background-color: #d4edda;
+        color: #155724;
+    }
+    
+    .status-draft {
+        background-color: #fff3cd;
+        color: #856404;
+    }
+    
+    .status-graded {
+        background-color: #d1ecf1;
+        color: #0c5460;
+    }
+    
+    .late-indicator {
+        background-color: #f8d7da;
+        color: #721c24;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-size: 11px;
+        text-transform: uppercase;
+    }
+    
+    .grade-display {
+        font-weight: bold;
+        color: #28a745;
+    }
+    
+    .submission-actions {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+    }
+    
+    .btn {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 4px;
+        text-decoration: none;
+        font-size: 14px;
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+    
+    .btn-primary {
+        background-color: #007bff;
+        color: white;
+    }
+    
+    .btn-primary:hover {
+        background-color: #0056b3;
+    }
+    
+    .btn-success {
+        background-color: #28a745;
+        color: white;
+    }
+    
+    .btn-success:hover {
+        background-color: #1e7e34;
+    }
+    
+    .btn-secondary {
+        background-color: #6c757d;
+        color: white;
+    }
+    
+    .btn-secondary:hover {
+        background-color: #545b62;
+    }
+    
+    .file-indicator {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 12px;
+        color: #666;
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 40px;
+        color: #666;
+    }
+    
+    .empty-state i {
+        font-size: 48px;
+        margin-bottom: 15px;
+        color: #ccc;
+    }
+</style>
+
+<div class="submissions-container">
+    <!-- Assignment Information -->
+    <div class="assignment-header">
+        <h1 class="assignment-title">{{ assignment.title }}</h1>
+        <p class="assignment-course">{{ assignment.course.course_code }} - {{ assignment.course.course_name }}</p>
+        
+        <div class="assignment-meta">
+            <div class="meta-item">
+                <span class="meta-label">Due Date:</span>
+                <span class="meta-value">{{ assignment.due_date|date:"M d, Y g:i A" }}</span>
+            </div>
+            <div class="meta-item">
+                <span class="meta-label">Max Points:</span>
+                <span class="meta-value">{{ assignment.max_points }}</span>
+            </div>
+            <div class="meta-item">
+                <span class="meta-label">Status:</span>
+                <span class="meta-value">{{ assignment.get_status_display }}</span>
+            </div>
+            <div class="meta-item">
+                <span class="meta-label">Created:</span>
+                <span class="meta-value">{{ assignment.created_at|date:"M d, Y" }}</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistics -->
+    <div class="stats-row">
+        <div class="stat-card">
+            <p class="stat-number">{{ total_students }}</p>
+            <p class="stat-label">Enrolled Students</p>
+        </div>
+        <div class="stat-card">
+            <p class="stat-number">{{ total_submissions }}</p>
+            <p class="stat-label">Total Submissions</p>
+        </div>
+        <div class="stat-card">
+            <p class="stat-number">{{ submitted_count }}</p>
+            <p class="stat-label">Submitted</p>
+        </div>
+        <div class="stat-card">
+            <p class="stat-number">{{ graded_count }}</p>
+            <p class="stat-label">Graded</p>
+        </div>
+        <div class="stat-card">
+            <p class="stat-number">{{ late_submissions }}</p>
+            <p class="stat-label">Late Submissions</p>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="filters">
+        <form method="get" class="filter-group">
+            <div class="filter-item">
+                <label>Status:</label>
+                <select name="status" class="filter-select" onchange="this.form.submit()">
+                    <option value="">All Statuses</option>
+                    <option value="submitted" {% if selected_status == 'submitted' %}selected{% endif %}>Submitted</option>
+                    <option value="graded" {% if selected_status == 'graded' %}selected{% endif %}>Graded</option>
+                    <option value="draft" {% if selected_status == 'draft' %}selected{% endif %}>Draft</option>
+                </select>
+            </div>
+        </form>
+    </div>
+
+    <!-- Submissions List -->
+    <div class="submissions-list">
+        <div class="list-header">
+            <h3>📝 Student Submissions ({{ submissions.count }})</h3>
+        </div>
+        
+        {% if submissions %}
+            {% for submission in submissions %}
+            <div class="submission-item">
+                <div class="submission-info">
+                    <h4 class="student-name">{{ submission.get_student_name }}</h4>
+                    <div class="submission-meta">
+                        {% if submission.submitted_at %}
+                            Submitted: {{ submission.submitted_at|date:"M d, Y g:i A" }}
+                        {% else %}
+                            Last saved: {{ submission.updated_at|date:"M d, Y g:i A" }}
+                        {% endif %}
+                        {% if submission.submission_file %}
+                            <span class="file-indicator">📎 {{ submission.original_filename|default:submission.submission_file.name }}</span>
+                        {% endif %}
+                        {% if submission.submission_text %}
+                            <span class="file-indicator">📝 Text submission included</span>
+                        {% endif %}
+                    </div>
+                    <div class="submission-status">
+                        <span class="status-badge status-{{ submission.status }}">{{ submission.get_status_display }}</span>
+                        {% if submission.late_submission %}
+                            <span class="late-indicator">Late</span>
+                        {% endif %}
+                        {% if submission.status == 'graded' and submission.grade %}
+                            <span class="grade-display">Grade: {{ submission.get_final_grade }}/{{ assignment.max_points }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="submission-actions">
+                    {% if submission.submission_file %}
+                        <a href="{% url 'download_submission' submission.id %}" class="btn btn-secondary">Download</a>
+                    {% endif %}
+                    {% if submission.status == 'submitted' %}
+                        <a href="/admin/MainInterface/assignmentsubmission/{{ submission.id }}/change/" class="btn btn-primary" target="_blank">Grade</a>
+                    {% elif submission.status == 'graded' %}
+                        <a href="/admin/MainInterface/assignmentsubmission/{{ submission.id }}/change/" class="btn btn-success" target="_blank">View Grade</a>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="empty-state">
+                <div>📝</div>
+                <p>No submissions found</p>
+                {% if selected_status %}
+                    <p><a href="{% url 'assignment_submissions' assignment.id %}">View all submissions</a></p>
+                {% endif %}
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+{% endblock %}
