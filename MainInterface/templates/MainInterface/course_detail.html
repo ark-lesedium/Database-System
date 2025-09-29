@@ -1,0 +1,453 @@
+{% extends 'MainInterface/base.html' %}
+{% load course_filters %}
+
+{% block title %}{{ course.course_code }} - Course Details{% endblock %}
+{% block header %}
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span>Course Details</span>
+        <div>
+            {% if user.userprofile.user_type == 'student' %}
+                <a href="{% url 'enrolled_courses' %}" style="background-color: #6c757d; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px; margin-right: 10px;">Back to My Courses</a>
+            {% else %}
+                <a href="{% url 'browse_courses' %}" style="background-color: #6c757d; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px; margin-right: 10px;">Back to Browse</a>
+            {% endif %}
+            <a href="{% url 'logout' %}" style="background-color: #dc3545; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px;">Logout</a>
+        </div>
+    </div>
+{% endblock %}
+
+{% block content %}
+<style>
+    .detail-container {
+        max-width: 1000px;
+        margin: 0 auto;
+    }
+    
+    .course-hero {
+        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+        color: white;
+        padding: 40px;
+        border-radius: 8px;
+        margin-bottom: 30px;
+        text-align: center;
+    }
+    
+    .course-code-large {
+        font-size: 36px;
+        font-weight: bold;
+        margin: 0 0 15px 0;
+    }
+    
+    .course-name-large {
+        font-size: 24px;
+        margin: 0 0 10px 0;
+        opacity: 0.9;
+    }
+    
+    .course-lecturer-large {
+        font-size: 18px;
+        opacity: 0.8;
+        margin: 0;
+    }
+    
+    .details-grid {
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        gap: 30px;
+        margin-bottom: 30px;
+    }
+    
+    .main-content {
+        background: white;
+        border-radius: 8px;
+        padding: 30px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .sidebar {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+    }
+    
+    .info-card {
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .card-title {
+        font-size: 18px;
+        font-weight: bold;
+        color: #333;
+        margin: 0 0 15px 0;
+        padding-bottom: 10px;
+        border-bottom: 2px solid #007bff;
+    }
+    
+    .info-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 0;
+        border-bottom: 1px solid #e9ecef;
+    }
+    
+    .info-item:last-child {
+        border-bottom: none;
+    }
+    
+    .info-label {
+        font-weight: bold;
+        color: #666;
+    }
+    
+    .info-value {
+        color: #333;
+    }
+    
+    .enrollment-status-card {
+        border-left: 4px solid #007bff;
+    }
+    
+    .enrollment-status-card.enrolled {
+        border-left-color: #28a745;
+    }
+    
+    .enrollment-status-card.pending {
+        border-left-color: #ffc107;
+    }
+    
+    .enrollment-status-card.waitlisted {
+        border-left-color: #17a2b8;
+    }
+    
+    .status-badge {
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: bold;
+        text-transform: uppercase;
+    }
+    
+    .status-enrolled {
+        background: #d4edda;
+        color: #155724;
+    }
+    
+    .status-pending {
+        background: #fff3cd;
+        color: #856404;
+    }
+    
+    .status-waitlisted {
+        background: #d6f5ff;
+        color: #0c5460;
+    }
+    
+    .status-not-enrolled {
+        background: #e9ecef;
+        color: #6c757d;
+    }
+    
+    .description-section {
+        margin-bottom: 30px;
+    }
+    
+    .section-title {
+        font-size: 20px;
+        font-weight: bold;
+        color: #333;
+        margin: 0 0 15px 0;
+        padding-bottom: 8px;
+        border-bottom: 1px solid #e9ecef;
+    }
+    
+    .description-text {
+        color: #666;
+        line-height: 1.6;
+        font-size: 16px;
+    }
+    
+    .prerequisites-section {
+        margin-top: 20px;
+    }
+    
+    .prerequisite-item {
+        background: #f8f9fa;
+        padding: 10px 15px;
+        border-radius: 6px;
+        margin-bottom: 10px;
+        border-left: 3px solid #007bff;
+    }
+    
+    .prerequisite-code {
+        font-weight: bold;
+        color: #007bff;
+    }
+    
+    .action-buttons {
+        display: flex;
+        gap: 15px;
+        justify-content: center;
+        margin-top: 20px;
+    }
+    
+    .btn {
+        padding: 12px 24px;
+        border: none;
+        border-radius: 6px;
+        font-size: 16px;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        transition: all 0.3s;
+        font-weight: 500;
+    }
+    
+    .btn-primary {
+        background-color: #007bff;
+        color: white;
+    }
+    
+    .btn-primary:hover {
+        background-color: #0056b3;
+        transform: translateY(-1px);
+    }
+    
+    .btn-success {
+        background-color: #28a745;
+        color: white;
+    }
+    
+    .btn-success:hover {
+        background-color: #218838;
+        transform: translateY(-1px);
+    }
+    
+    .btn-warning {
+        background-color: #ffc107;
+        color: #212529;
+    }
+    
+    .btn-warning:hover {
+        background-color: #e0a800;
+        transform: translateY(-1px);
+    }
+    
+    .btn-danger {
+        background-color: #dc3545;
+        color: white;
+    }
+    
+    .btn-danger:hover {
+        background-color: #c82333;
+        transform: translateY(-1px);
+    }
+    
+    .btn-secondary {
+        background-color: #6c757d;
+        color: white;
+    }
+    
+    .btn-secondary:hover {
+        background-color: #545b62;
+        transform: translateY(-1px);
+    }
+    
+    .alert {
+        padding: 15px;
+        border-radius: 6px;
+        margin-bottom: 20px;
+    }
+    
+    .alert-success {
+        background-color: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+    }
+    
+    .alert-error {
+        background-color: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+    }
+    
+    .enrollment-history {
+        margin-top: 15px;
+    }
+    
+    .history-item {
+        font-size: 14px;
+        color: #666;
+        margin-bottom: 5px;
+    }
+    
+    @media (max-width: 768px) {
+        .details-grid {
+            grid-template-columns: 1fr;
+        }
+        
+        .action-buttons {
+            flex-direction: column;
+        }
+    }
+</style>
+
+<div class="detail-container">
+    <!-- Display Messages -->
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{% if message.tags == 'error' %}error{% else %}{{ message.tags }}{% endif %}">
+                {{ message }}
+            </div>
+        {% endfor %}
+    {% endif %}
+    
+    <!-- Course Hero Section -->
+    <div class="course-hero">
+        <h1 class="course-code-large">{{ course.course_code }}</h1>
+        <h2 class="course-name-large">{{ course.course_name }}</h2>
+        <p class="course-lecturer-large">👨‍🏫 Instructor: {{ course.get_lecturer_name }}</p>
+    </div>
+    
+    <!-- Details Grid -->
+    <div class="details-grid">
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Course Description -->
+            <div class="description-section">
+                <h3 class="section-title">Course Description</h3>
+                <p class="description-text">{{ course.description }}</p>
+            </div>
+            
+            <!-- Prerequisites -->
+            {% if course.prerequisites.exists %}
+                <div class="prerequisites-section">
+                    <h3 class="section-title">Prerequisites</h3>
+                    {% for prereq in course.prerequisites.all %}
+                        <div class="prerequisite-item">
+                            <span class="prerequisite-code">{{ prereq.course_code }}</span> - {{ prereq.course_name }}
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        </div>
+        
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <!-- Course Information -->
+            <div class="info-card">
+                <h3 class="card-title">Course Information</h3>
+                <div class="info-item">
+                    <span class="info-label">Credits</span>
+                    <span class="info-value">{{ course.credits }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Level</span>
+                    <span class="info-value">{{ course.get_level_display }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Semester</span>
+                    <span class="info-value">{{ course.get_semester_display }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Status</span>
+                    <span class="info-value">{{ course.get_status_display }}</span>
+                </div>
+            </div>
+            
+            <!-- Enrollment Information -->
+            <div class="info-card">
+                <h3 class="card-title">Enrollment</h3>
+                <div class="info-item">
+                    <span class="info-label">Enrolled</span>
+                    <span class="info-value">{{ course.get_enrolled_count }}/{{ course.max_students }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Available Spots</span>
+                    <span class="info-value">
+                        {% if course.has_space %}
+                            {{ course.max_students|sub:course.get_enrolled_count }}
+                        {% else %}
+                            0 (Full)
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+            
+            <!-- Enrollment Status (for students) -->
+            {% if user.userprofile.user_type == 'student' %}
+                <div class="info-card enrollment-status-card {% if user_enrollment %}{{ user_enrollment.status }}{% endif %}">
+                    <h3 class="card-title">Your Enrollment Status</h3>
+                    {% if user_enrollment %}
+                        <div class="info-item">
+                            <span class="info-label">Status</span>
+                            <span class="status-badge status-{{ user_enrollment.status }}">
+                                {{ user_enrollment.get_status_display }}
+                            </span>
+                        </div>
+                        <div class="enrollment-history">
+                            <div class="history-item">
+                                📅 Enrolled: {{ user_enrollment.enrollment_date|date:"M d, Y" }}
+                            </div>
+                            {% if user_enrollment.last_updated != user_enrollment.enrollment_date %}
+                                <div class="history-item">
+                                    🔄 Updated: {{ user_enrollment.last_updated|date:"M d, Y" }}
+                                </div>
+                            {% endif %}
+                        </div>
+                    {% else %}
+                        <div class="info-item">
+                            <span class="info-label">Status</span>
+                            <span class="status-badge status-not-enrolled">Not Enrolled</span>
+                        </div>
+                    {% endif %}
+                </div>
+            {% endif %}
+        </div>
+    </div>
+    
+    <!-- Action Buttons (for students) -->
+    {% if user.userprofile.user_type == 'student' %}
+        <div class="action-buttons">
+            {% if user_enrollment %}
+                {% if user_enrollment.status == 'enrolled' %}
+                    <a href="{% url 'drop_course' course.id %}" class="btn btn-danger" onclick="return confirm('Are you sure you want to drop {{ course.course_code }}?')">
+                        ❌ Drop Course
+                    </a>
+                {% elif user_enrollment.status == 'pending' %}
+                    <a href="{% url 'cancel_enrollment' course.id %}" class="btn btn-secondary" onclick="return confirm('Cancel your enrollment request?')">
+                        ❌ Cancel Request
+                    </a>
+                {% elif user_enrollment.status == 'waitlisted' %}
+                    <span class="btn btn-warning" style="cursor: default;">
+                        ⏳ On Waitlist
+                    </span>
+                {% elif user_enrollment.status == 'dropped' %}
+                    <a href="{% url 'enroll_course' course.id %}" class="btn btn-success">
+                        ↩️ Re-enroll
+                    </a>
+                {% endif %}
+            {% else %}
+                {% if course.has_space %}
+                    <a href="{% url 'enroll_course' course.id %}" class="btn btn-success">
+                        ✅ Enroll in Course
+                    </a>
+                {% else %}
+                    <a href="{% url 'join_waitlist' course.id %}" class="btn btn-warning">
+                        ⏳ Join Waitlist
+                    </a>
+                {% endif %}
+            {% endif %}
+            <a href="{% url 'browse_courses' %}" class="btn btn-primary">
+                📚 Browse More Courses
+            </a>
+        </div>
+    {% endif %}
+</div>
+
+{% endblock %}

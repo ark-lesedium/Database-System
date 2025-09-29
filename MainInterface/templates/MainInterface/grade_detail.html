@@ -1,0 +1,537 @@
+{% extends 'MainInterface/base.html' %}
+
+{% block title %}{{ course.course_code }} - Grade Details{% endblock %}
+{% block header %}
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span>Grade Details</span>
+        <div>
+            <a href="{% url 'view_grades' %}" style="background-color: #6c757d; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px; margin-right: 10px;">Back to Grades</a>
+            <a href="{% url 'logout' %}" style="background-color: #dc3545; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px;">Logout</a>
+        </div>
+    </div>
+{% endblock %}
+
+{% block content %}
+<style>
+    .grade-detail-container {
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+    
+    .course-hero {
+        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+        color: white;
+        padding: 40px;
+        border-radius: 8px;
+        margin-bottom: 30px;
+        text-align: center;
+    }
+    
+    .course-code-large {
+        font-size: 36px;
+        font-weight: bold;
+        margin: 0 0 15px 0;
+    }
+    
+    .course-name-large {
+        font-size: 24px;
+        margin: 0 0 10px 0;
+        opacity: 0.9;
+    }
+    
+    .final-grade-hero {
+        font-size: 48px;
+        font-weight: bold;
+        margin: 20px 0 10px 0;
+    }
+    
+    .grade-summary {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 20px;
+        margin-top: 20px;
+    }
+    
+    .summary-stat {
+        background: rgba(255,255,255,0.1);
+        padding: 15px;
+        border-radius: 6px;
+        text-align: center;
+    }
+    
+    .summary-number {
+        font-size: 24px;
+        font-weight: bold;
+        margin: 0 0 5px 0;
+    }
+    
+    .summary-label {
+        font-size: 12px;
+        opacity: 0.8;
+        margin: 0;
+    }
+    
+    .grades-content {
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        gap: 30px;
+    }
+    
+    .grades-main {
+        display: flex;
+        flex-direction: column;
+        gap: 30px;
+    }
+    
+    .grades-sidebar {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+    }
+    
+    .grade-section {
+        background: white;
+        border-radius: 8px;
+        padding: 25px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .section-title {
+        font-size: 20px;
+        font-weight: bold;
+        color: #333;
+        margin: 0 0 20px 0;
+        padding-bottom: 10px;
+        border-bottom: 2px solid #007bff;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .grade-type-badge {
+        background: #007bff;
+        color: white;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        text-transform: uppercase;
+    }
+    
+    .grades-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    
+    .grades-table th,
+    .grades-table td {
+        padding: 12px;
+        text-align: left;
+        border-bottom: 1px solid #e9ecef;
+    }
+    
+    .grades-table th {
+        background-color: #f8f9fa;
+        font-weight: bold;
+        color: #333;
+    }
+    
+    .grades-table tr:hover {
+        background-color: #f8f9fa;
+    }
+    
+    .grade-cell {
+        font-weight: bold;
+        text-align: center;
+    }
+    
+    .grade-a { color: #28a745; }
+    .grade-b { color: #17a2b8; }
+    .grade-c { color: #ffc107; }
+    .grade-d { color: #fd7e14; }
+    .grade-f { color: #dc3545; }
+    
+    .percentage-cell {
+        text-align: center;
+        font-weight: bold;
+        color: #007bff;
+    }
+    
+    .date-cell {
+        font-size: 12px;
+        color: #666;
+    }
+    
+    .comments-cell {
+        font-style: italic;
+        color: #666;
+        max-width: 200px;
+        word-wrap: break-word;
+    }
+    
+    .info-card {
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .card-title {
+        font-size: 16px;
+        font-weight: bold;
+        color: #333;
+        margin: 0 0 15px 0;
+        padding-bottom: 8px;
+        border-bottom: 1px solid #e9ecef;
+    }
+    
+    .info-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 0;
+        border-bottom: 1px solid #f8f9fa;
+    }
+    
+    .info-item:last-child {
+        border-bottom: none;
+    }
+    
+    .info-label {
+        font-weight: 500;
+        color: #666;
+    }
+    
+    .info-value {
+        color: #333;
+        font-weight: bold;
+    }
+    
+    .progress-bar-container {
+        margin: 15px 0;
+    }
+    
+    .progress-label {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 5px;
+        font-size: 14px;
+    }
+    
+    .progress-bar {
+        width: 100%;
+        height: 8px;
+        background: #e9ecef;
+        border-radius: 4px;
+        overflow: hidden;
+    }
+    
+    .progress-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #007bff, #0056b3);
+        transition: width 0.3s ease;
+    }
+    
+    .alert {
+        padding: 15px;
+        border-radius: 6px;
+        margin-bottom: 20px;
+    }
+    
+    .alert-info {
+        background-color: #d1ecf1;
+        color: #0c5460;
+        border: 1px solid #bee5eb;
+    }
+    
+    .empty-section {
+        text-align: center;
+        padding: 40px;
+        color: #666;
+    }
+    
+    .empty-icon {
+        font-size: 48px;
+        margin-bottom: 15px;
+        opacity: 0.5;
+    }
+    
+    .grade-trend {
+        margin-top: 15px;
+        padding: 10px;
+        background: #f8f9fa;
+        border-radius: 4px;
+        font-size: 12px;
+        color: #666;
+    }
+    
+    .trend-up {
+        color: #28a745;
+    }
+    
+    .trend-down {
+        color: #dc3545;
+    }
+    
+    @media (max-width: 768px) {
+        .grades-content {
+            grid-template-columns: 1fr;
+        }
+        
+        .grades-table {
+            font-size: 14px;
+        }
+        
+        .grades-table th,
+        .grades-table td {
+            padding: 8px 4px;
+        }
+        
+        .summary-stat {
+            padding: 10px;
+        }
+        
+        .summary-number {
+            font-size: 20px;
+        }
+    }
+</style>
+
+<div class="grade-detail-container">
+    <!-- Display Messages -->
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{% if message.tags == 'error' %}error{% else %}{{ message.tags }}{% endif %}">
+                {{ message }}
+            </div>
+        {% endfor %}
+    {% endif %}
+    
+    <!-- Course Hero Section -->
+    <div class="course-hero">
+        <h1 class="course-code-large">{{ course.course_code }}</h1>
+        <h2 class="course-name-large">{{ course.course_name }}</h2>
+        <div class="final-grade-hero">
+            {% if final_grade %}
+                {{ final_grade.grade_value }}
+            {% else %}
+                In Progress
+            {% endif %}
+        </div>
+        
+        <div class="grade-summary">
+            <div class="summary-stat">
+                <div class="summary-number">{{ total_assignments }}</div>
+                <p class="summary-label">Total Assignments</p>
+            </div>
+            <div class="summary-stat">
+                <div class="summary-number">{{ average_score|floatformat:1 }}%</div>
+                <p class="summary-label">Average Score</p>
+            </div>
+            <div class="summary-stat">
+                <div class="summary-number">{{ course.credits }}</div>
+                <p class="summary-label">Credits</p>
+            </div>
+            <div class="summary-stat">
+                <div class="summary-number">{{ course.get_semester_display }}</div>
+                <p class="summary-label">Semester</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Main Content Grid -->
+    <div class="grades-content">
+        <!-- Main Grades Section -->
+        <div class="grades-main">
+            {% if grades %}
+                {% if grades_by_type %}
+                    {% for grade_type, type_grades in grades_by_type.items %}
+                        <div class="grade-section">
+                            <h3 class="section-title">
+                                {{ type_grades.0.get_grade_type_display }}
+                                <span class="grade-type-badge">{{ type_grades.count }} item{{ type_grades.count|pluralize }}</span>
+                            </h3>
+                            
+                            <table class="grades-table">
+                                <thead>
+                                    <tr>
+                                        <th>Assignment</th>
+                                        <th>Grade</th>
+                                        <th>Score</th>
+                                        <th>Date</th>
+                                        <th>Comments</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for grade in type_grades %}
+                                        <tr>
+                                            <td>
+                                                {% if grade.description %}
+                                                    {{ grade.description }}
+                                                {% else %}
+                                                    {{ grade.get_grade_type_display }}
+                                                {% endif %}
+                                            </td>
+                                            <td class="grade-cell grade-{{ grade.grade_value.0|lower }}">
+                                                {{ grade.grade_value }}
+                                            </td>
+                                            <td class="percentage-cell">
+                                                {% if grade.numeric_score %}
+                                                    {{ grade.numeric_score }}/{{ grade.max_points }}
+                                                    ({{ grade.get_percentage }}%)
+                                                {% else %}
+                                                    N/A
+                                                {% endif %}
+                                            </td>
+                                            <td class="date-cell">
+                                                {{ grade.date_graded|date:"M d, Y" }}
+                                            </td>
+                                            <td class="comments-cell">
+                                                {% if grade.comments %}
+                                                    {{ grade.comments|truncatechars:50 }}
+                                                {% else %}
+                                                    -
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="grade-section">
+                        <h3 class="section-title">All Grades</h3>
+                        <table class="grades-table">
+                            <thead>
+                                <tr>
+                                    <th>Assignment</th>
+                                    <th>Type</th>
+                                    <th>Grade</th>
+                                    <th>Score</th>
+                                    <th>Date</th>
+                                    <th>Comments</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for grade in grades %}
+                                    <tr>
+                                        <td>
+                                            {% if grade.description %}
+                                                {{ grade.description }}
+                                            {% else %}
+                                                {{ grade.get_grade_type_display }}
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ grade.get_grade_type_display }}</td>
+                                        <td class="grade-cell grade-{{ grade.grade_value.0|lower }}">
+                                            {{ grade.grade_value }}
+                                        </td>
+                                        <td class="percentage-cell">
+                                            {% if grade.numeric_score %}
+                                                {{ grade.numeric_score }}/{{ grade.max_points }}
+                                                ({{ grade.get_percentage }}%)
+                                            {% else %}
+                                                N/A
+                                            {% endif %}
+                                        </td>
+                                        <td class="date-cell">
+                                            {{ grade.date_graded|date:"M d, Y" }}
+                                        </td>
+                                        <td class="comments-cell">
+                                            {% if grade.comments %}
+                                                {{ grade.comments|truncatechars:50 }}
+                                            {% else %}
+                                                -
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% endif %}
+            {% else %}
+                <div class="grade-section empty-section">
+                    <div class="empty-icon">📊</div>
+                    <h3>No Grades Available</h3>
+                    <p>Your instructor hasn't posted any grades for this course yet.</p>
+                </div>
+            {% endif %}
+        </div>
+        
+        <!-- Sidebar -->
+        <div class="grades-sidebar">
+            <!-- Course Information -->
+            <div class="info-card">
+                <h3 class="card-title">Course Information</h3>
+                <div class="info-item">
+                    <span class="info-label">Instructor</span>
+                    <span class="info-value">{{ course.get_lecturer_name }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Credits</span>
+                    <span class="info-value">{{ course.credits }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Level</span>
+                    <span class="info-value">{{ course.get_level_display }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Semester</span>
+                    <span class="info-value">{{ course.get_semester_display }}</span>
+                </div>
+            </div>
+            
+            <!-- Grade Statistics -->
+            <div class="info-card">
+                <h3 class="card-title">Grade Statistics</h3>
+                <div class="info-item">
+                    <span class="info-label">Final Grade</span>
+                    <span class="info-value grade-{{ final_grade.grade_value.0|lower }}">
+                        {% if final_grade %}{{ final_grade.grade_value }}{% else %}In Progress{% endif %}
+                    </span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Average Score</span>
+                    <span class="info-value">{{ average_score|floatformat:1 }}%</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Assignments</span>
+                    <span class="info-value">{{ total_assignments }}</span>
+                </div>
+                
+                {% if average_score and average_score > 0 %}
+                    <div class="progress-bar-container">
+                        <div class="progress-label">
+                            <span>Progress</span>
+                            <span>{{ average_score|floatformat:1 }}%</span>
+                        </div>
+                        
+                    </div>
+                {% endif %}
+            </div>
+            
+            <!-- Enrollment Status -->
+            <div class="info-card">
+                <h3 class="card-title">Enrollment Status</h3>
+                <div class="info-item">
+                    <span class="info-label">Status</span>
+                    <span class="info-value">{{ enrollment.get_status_display }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Enrolled</span>
+                    <span class="info-value">{{ enrollment.enrollment_date|date:"M d, Y" }}</span>
+                </div>
+                {% if enrollment.last_updated != enrollment.enrollment_date %}
+                    <div class="info-item">
+                        <span class="info-label">Updated</span>
+                        <span class="info-value">{{ enrollment.last_updated|date:"M d, Y" }}</span>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

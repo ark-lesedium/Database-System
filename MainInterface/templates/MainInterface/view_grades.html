@@ -1,0 +1,556 @@
+{% extends 'MainInterface/base.html' %}
+
+{% block title %}My Grades - Database System{% endblock %}
+{% block header %}
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span>My Grades & Results</span>
+        <div>
+            <a href="{% url 'student_dashboard' %}" style="background-color: #6c757d; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px; margin-right: 10px;">Back to Dashboard</a>
+            <a href="{% url 'logout' %}" style="background-color: #dc3545; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px;">Logout</a>
+        </div>
+    </div>
+{% endblock %}
+
+{% block content %}
+<style>
+    .grades-container {
+        max-width: 1400px;
+        margin: 0 auto;
+    }
+    
+    .gpa-hero {
+        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+        color: white;
+        padding: 30px;
+        border-radius: 8px;
+        margin-bottom: 30px;
+        text-align: center;
+    }
+    
+    .gpa-main {
+        font-size: 48px;
+        font-weight: bold;
+        margin: 0 0 10px 0;
+    }
+    
+    .gpa-label {
+        font-size: 18px;
+        opacity: 0.9;
+        margin: 0 0 15px 0;
+    }
+    
+    .gpa-details {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 20px;
+        margin-top: 20px;
+    }
+    
+    .gpa-stat {
+        background: rgba(255,255,255,0.1);
+        padding: 15px;
+        border-radius: 6px;
+        text-align: center;
+    }
+    
+    .gpa-stat-number {
+        font-size: 24px;
+        font-weight: bold;
+        margin: 0 0 5px 0;
+    }
+    
+    .gpa-stat-label {
+        font-size: 12px;
+        opacity: 0.8;
+        margin: 0;
+    }
+    
+    .filter-section {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+    }
+    
+    .filter-form {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)) auto;
+        gap: 15px;
+        align-items: end;
+    }
+    
+    .form-group {
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .form-label {
+        font-weight: bold;
+        margin-bottom: 5px;
+        color: #333;
+    }
+    
+    .form-select {
+        padding: 10px;
+        border: 2px solid #e9ecef;
+        border-radius: 6px;
+        font-size: 14px;
+        transition: border-color 0.3s;
+    }
+    
+    .form-select:focus {
+        outline: none;
+        border-color: #007bff;
+    }
+    
+    .btn {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 6px;
+        font-size: 14px;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        transition: all 0.3s;
+        font-weight: 500;
+    }
+    
+    .btn-primary {
+        background-color: #007bff;
+        color: white;
+    }
+    
+    .btn-primary:hover {
+        background-color: #0056b3;
+        transform: translateY(-1px);
+    }
+    
+    .grades-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+        gap: 20px;
+    }
+    
+    .course-grade-card {
+        background: white;
+        border-radius: 8px;
+        padding: 25px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        transition: transform 0.2s, box-shadow 0.2s;
+        border-left: 4px solid #007bff;
+    }
+    
+    .course-grade-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    
+    .course-grade-card.grade-a { border-left-color: #28a745; }
+    .course-grade-card.grade-b { border-left-color: #17a2b8; }
+    .course-grade-card.grade-c { border-left-color: #ffc107; }
+    .course-grade-card.grade-d { border-left-color: #fd7e14; }
+    .course-grade-card.grade-f { border-left-color: #dc3545; }
+    
+    .course-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: start;
+        margin-bottom: 15px;
+    }
+    
+    .course-code {
+        font-size: 20px;
+        font-weight: bold;
+        color: #007bff;
+        margin: 0;
+    }
+    
+    .final-grade {
+        padding: 8px 15px;
+        border-radius: 20px;
+        font-size: 18px;
+        font-weight: bold;
+        text-align: center;
+        min-width: 60px;
+    }
+    
+    .grade-a { background: #d4edda; color: #155724; }
+    .grade-b { background: #d6f5ff; color: #0c5460; }
+    .grade-c { background: #fff3cd; color: #856404; }
+    .grade-d { background: #ffeaa7; color: #856404; }
+    .grade-f { background: #f8d7da; color: #721c24; }
+    .grade-incomplete { background: #e2e3e5; color: #6c757d; }
+    
+    .course-title {
+        font-size: 16px;
+        font-weight: bold;
+        color: #333;
+        margin: 0 0 8px 0;
+    }
+    
+    .course-lecturer {
+        color: #666;
+        font-size: 14px;
+        margin-bottom: 15px;
+    }
+    
+    .grade-summary {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 6px;
+        margin-bottom: 15px;
+    }
+    
+    .grade-stats {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+        margin-bottom: 10px;
+    }
+    
+    .grade-stat-item {
+        text-align: center;
+        padding: 8px;
+        background: white;
+        border-radius: 4px;
+    }
+    
+    .stat-value {
+        font-size: 16px;
+        font-weight: bold;
+        color: #007bff;
+        margin: 0;
+    }
+    
+    .stat-label {
+        font-size: 10px;
+        text-transform: uppercase;
+        color: #666;
+        margin: 2px 0 0 0;
+    }
+    
+    .assignments-list {
+        max-height: 200px;
+        overflow-y: auto;
+    }
+    
+    .assignment-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 0;
+        border-bottom: 1px solid #e9ecef;
+    }
+    
+    .assignment-item:last-child {
+        border-bottom: none;
+    }
+    
+    .assignment-name {
+        font-size: 14px;
+        color: #333;
+        flex: 1;
+    }
+    
+    .assignment-type {
+        font-size: 10px;
+        text-transform: uppercase;
+        color: #666;
+        background: #e9ecef;
+        padding: 2px 6px;
+        border-radius: 10px;
+        margin: 0 10px;
+    }
+    
+    .assignment-grade {
+        font-weight: bold;
+        color: #007bff;
+        font-size: 14px;
+    }
+    
+    .course-actions {
+        display: flex;
+        gap: 10px;
+        justify-content: flex-end;
+    }
+    
+    .btn-small {
+        padding: 6px 12px;
+        font-size: 12px;
+    }
+    
+    .btn-info {
+        background-color: #17a2b8;
+        color: white;
+    }
+    
+    .btn-info:hover {
+        background-color: #138496;
+        transform: translateY(-1px);
+    }
+    
+    .semester-section {
+        margin-bottom: 30px;
+    }
+    
+    .semester-header {
+        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+        color: white;
+        padding: 15px 20px;
+        border-radius: 8px 8px 0 0;
+        font-weight: bold;
+        font-size: 16px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .semester-gpa {
+        background: rgba(255,255,255,0.2);
+        padding: 5px 12px;
+        border-radius: 15px;
+        font-size: 14px;
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .empty-icon {
+        font-size: 64px;
+        margin-bottom: 20px;
+    }
+    
+    .empty-title {
+        font-size: 24px;
+        color: #333;
+        margin-bottom: 10px;
+    }
+    
+    .empty-description {
+        color: #666;
+        margin-bottom: 20px;
+    }
+    
+    .alert {
+        padding: 15px;
+        border-radius: 6px;
+        margin-bottom: 20px;
+    }
+    
+    .alert-success {
+        background-color: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+    }
+    
+    .alert-error {
+        background-color: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+    }
+    
+    .transcript-actions {
+        text-align: center;
+        margin-top: 30px;
+        padding: 20px;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    @media (max-width: 768px) {
+        .filter-form {
+            grid-template-columns: 1fr;
+        }
+        
+        .grades-grid {
+            grid-template-columns: 1fr;
+        }
+        
+        .gpa-details {
+            grid-template-columns: repeat(2, 1fr);
+        }
+        
+        .grade-stats {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+<div class="grades-container">
+    <!-- Display Messages -->
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{% if message.tags == 'error' %}error{% else %}{{ message.tags }}{% endif %}">
+                {{ message }}
+            </div>
+        {% endfor %}
+    {% endif %}
+    
+    <!-- GPA Hero Section -->
+    <div class="gpa-hero">
+        <div class="gpa-main">{{ current_gpa|default:"N/A" }}</div>
+        <p class="gpa-label">Current Cumulative GPA</p>
+        
+        <div class="gpa-details">
+            <div class="gpa-stat">
+                <div class="gpa-stat-number">{{ total_courses_with_grades }}</div>
+                <p class="gpa-stat-label">Courses Completed</p>
+            </div>
+            <div class="gpa-stat">
+                <div class="gpa-stat-number">{{ total_credits_completed }}</div>
+                <p class="gpa-stat-label">Credits Earned</p>
+            </div>
+            <div class="gpa-stat">
+                <div class="gpa-stat-number">{{ semester_gpa|default:"N/A" }}</div>
+                <p class="gpa-stat-label">This Semester GPA</p>
+            </div>
+            <div class="gpa-stat">
+                <div class="gpa-stat-number">{{ grade_distribution.A|default:0 }}</div>
+                <p class="gpa-stat-label">A Grades</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Filter Section -->
+    <div class="filter-section">
+        <form method="GET" class="filter-form">
+            <div class="form-group">
+                <label for="semester" class="form-label">Filter by Semester</label>
+                <select id="semester" name="semester" class="form-select">
+                    <option value="">All Semesters</option>
+                    <option value="1" {% if request.GET.semester == '1' %}selected{% endif %}>Semester 1</option>
+                    <option value="2" {% if request.GET.semester == '2' %}selected{% endif %}>Semester 2</option>
+                    <option value="3" {% if request.GET.semester == '3' %}selected{% endif %}>Summer Session</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="grade_filter" class="form-label">Filter by Grade</label>
+                <select id="grade_filter" name="grade_filter" class="form-select">
+                    <option value="">All Grades</option>
+                    <option value="A" {% if request.GET.grade_filter == 'A' %}selected{% endif %}>A Grades</option>
+                    <option value="B" {% if request.GET.grade_filter == 'B' %}selected{% endif %}>B Grades</option>
+                    <option value="C" {% if request.GET.grade_filter == 'C' %}selected{% endif %}>C Grades</option>
+                    <option value="D" {% if request.GET.grade_filter == 'D' %}selected{% endif %}>D Grades</option>
+                    <option value="F" {% if request.GET.grade_filter == 'F' %}selected{% endif %}>F Grades</option>
+                </select>
+            </div>
+            
+            <button type="submit" class="btn btn-primary">
+                🔍 Filter
+            </button>
+        </form>
+    </div>
+    
+    <!-- Grades by Course -->
+    {% if course_grades %}
+        <div class="grades-grid">
+            {% for course_data in course_grades %}
+                <div class="course-grade-card grade-{{ course_data.final_grade.0|lower }}">
+                    <div class="course-header">
+                        <div>
+                            <h3 class="course-code">{{ course_data.course.course_code }}</h3>
+                            <h4 class="course-title">{{ course_data.course.course_name }}</h4>
+                            <p class="course-lecturer">👨‍🏫 {{ course_data.course.get_lecturer_name }}</p>
+                        </div>
+                        <div class="final-grade grade-{{ course_data.final_grade.0|lower }}">
+                            {{ course_data.final_grade|default:"N/A" }}
+                        </div>
+                    </div>
+                    
+                    <div class="grade-summary">
+                        <div class="grade-stats">
+                            <div class="grade-stat-item">
+                                <div class="stat-value">{{ course_data.course.credits }}</div>
+                                <p class="stat-label">Credits</p>
+                            </div>
+                            <div class="grade-stat-item">
+                                <div class="stat-value">{{ course_data.assignments_count }}</div>
+                                <p class="stat-label">Assignments</p>
+                            </div>
+                            <div class="grade-stat-item">
+                                <div class="stat-value">{{ course_data.average_score|floatformat:1 }}%</div>
+                                <p class="stat-label">Average</p>
+                            </div>
+                        </div>
+                        
+                        {% if course_data.recent_grades %}
+                            <div class="assignments-list">
+                                {% for grade in course_data.recent_grades %}
+                                    <div class="assignment-item">
+                                        <div class="assignment-name">
+                                            {% if grade.description %}
+                                                {{ grade.description }}
+                                            {% else %}
+                                                {{ grade.get_grade_type_display }}
+                                            {% endif %}
+                                        </div>
+                                        <div class="assignment-type">{{ grade.get_grade_type_display }}</div>
+                                        <div class="assignment-grade">
+                                            {% if grade.numeric_score %}
+                                                {{ grade.get_percentage }}%
+                                            {% endif %}
+                                            {{ grade.grade_value }}
+                                        </div>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="course-actions">
+                        <a href="{% url 'grade_detail' course_data.course.id %}" class="btn btn-info btn-small">
+                            📊 View Details
+                        </a>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="empty-state">
+            <div class="empty-icon">📊</div>
+            <h2 class="empty-title">
+                {% if request.GET.semester or request.GET.grade_filter %}
+                    No grades match your filters
+                {% else %}
+                    No Grades Available Yet
+                {% endif %}
+            </h2>
+            <p class="empty-description">
+                {% if request.GET.semester or request.GET.grade_filter %}
+                    Try adjusting your filter settings to view grades.
+                {% else %}
+                    Your instructors haven't posted any grades yet. Check back later or contact your instructors.
+                {% endif %}
+            </p>
+            {% if request.GET.semester or request.GET.grade_filter %}
+                <a href="{% url 'view_grades' %}" class="btn btn-primary">Clear Filters</a>
+            {% endif %}
+        </div>
+    {% endif %}
+    
+    <!-- Transcript Actions -->
+    <div class="transcript-actions">
+        <h3>Academic Records</h3>
+        <p>Need an official transcript or detailed grade report?</p>
+        <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;">
+            <a href="#" class="btn btn-primary" onclick="alert('Transcript request functionality will be available soon!')">
+                📄 Request Official Transcript
+            </a>
+            <a href="{% url 'enrolled_courses' %}" class="btn btn-info">
+                📚 View Current Enrollments
+            </a>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

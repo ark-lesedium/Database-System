@@ -1,0 +1,485 @@
+{% extends 'MainInterface/base.html' %}
+
+{% block title %}Profile Management - Database System{% endblock %}
+{% block header %}
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span>Profile Management</span>
+        <div>
+            {% if user.userprofile.user_type == 'student' %}
+                <a href="{% url 'student_dashboard' %}" style="background-color: #6c757d; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px; margin-right: 10px;">Back to Dashboard</a>
+            {% elif user.userprofile.user_type == 'lecturer' %}
+                <a href="{% url 'lecturer_dashboard' %}" style="background-color: #6c757d; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px; margin-right: 10px;">Back to Dashboard</a>
+            {% else %}
+                <a href="{% url 'dashboard' %}" style="background-color: #6c757d; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px; margin-right: 10px;">Back to Dashboard</a>
+            {% endif %}
+            <a href="{% url 'logout' %}" style="background-color: #dc3545; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px;">Logout</a>
+        </div>
+    </div>
+{% endblock %}
+
+{% block content %}
+<style>
+    .profile-container {
+        max-width: 800px;
+        margin: 0 auto;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        overflow: hidden;
+    }
+    
+    .profile-header {
+        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+        color: white;
+        padding: 30px;
+        text-align: center;
+    }
+    
+    .profile-header.lecturer {
+        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+    }
+    
+    .profile-avatar {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        background: rgba(255,255,255,0.2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 36px;
+        margin: 0 auto 15px;
+    }
+    
+    .profile-name {
+        font-size: 24px;
+        margin: 0 0 5px 0;
+    }
+    
+    .profile-role {
+        font-size: 16px;
+        opacity: 0.9;
+        margin: 0;
+    }
+    
+    .profile-form {
+        padding: 30px;
+    }
+    
+    .form-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+        margin-bottom: 20px;
+    }
+    
+    .form-group {
+        margin-bottom: 20px;
+    }
+    
+    .form-group.full-width {
+        grid-column: 1 / -1;
+    }
+    
+    .form-label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: bold;
+        color: #333;
+    }
+    
+    .form-input {
+        width: 100%;
+        padding: 12px;
+        border: 2px solid #e9ecef;
+        border-radius: 6px;
+        font-size: 16px;
+        transition: border-color 0.3s;
+        box-sizing: border-box;
+    }
+    
+    .form-input:focus {
+        outline: none;
+        border-color: #007bff;
+    }
+    
+    .form-input:disabled {
+        background-color: #f8f9fa;
+        color: #6c757d;
+        cursor: not-allowed;
+    }
+    
+    .form-select {
+        width: 100%;
+        padding: 12px;
+        border: 2px solid #e9ecef;
+        border-radius: 6px;
+        font-size: 16px;
+        background-color: white;
+        cursor: pointer;
+        transition: border-color 0.3s;
+        box-sizing: border-box;
+    }
+    
+    .form-select:focus {
+        outline: none;
+        border-color: #007bff;
+    }
+    
+    .form-actions {
+        display: flex;
+        gap: 15px;
+        justify-content: flex-end;
+        margin-top: 30px;
+        padding-top: 20px;
+        border-top: 1px solid #e9ecef;
+    }
+    
+    .btn {
+        padding: 12px 24px;
+        border: none;
+        border-radius: 6px;
+        font-size: 16px;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        transition: all 0.3s;
+    }
+    
+    .btn-primary {
+        background-color: #007bff;
+        color: white;
+    }
+    
+    .btn-primary:hover {
+        background-color: #0056b3;
+        transform: translateY(-1px);
+    }
+    
+    .btn-secondary {
+        background-color: #6c757d;
+        color: white;
+    }
+    
+    .btn-secondary:hover {
+        background-color: #545b62;
+        transform: translateY(-1px);
+    }
+    
+    .btn-danger {
+        background-color: #dc3545;
+        color: white;
+    }
+    
+    .btn-danger:hover {
+        background-color: #c82333;
+        transform: translateY(-1px);
+    }
+    
+    .alert {
+        padding: 15px;
+        border-radius: 6px;
+        margin-bottom: 20px;
+    }
+    
+    .alert-success {
+        background-color: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+    }
+    
+    .alert-error {
+        background-color: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+    }
+    
+    .info-section {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 6px;
+        margin-bottom: 20px;
+    }
+    
+    .info-title {
+        font-size: 18px;
+        font-weight: bold;
+        color: #333;
+        margin: 0 0 10px 0;
+    }
+    
+    .info-text {
+        color: #666;
+        margin: 0;
+        line-height: 1.5;
+    }
+    
+    .password-section {
+        margin-top: 30px;
+        padding-top: 30px;
+        border-top: 2px solid #e9ecef;
+    }
+    
+    @media (max-width: 768px) {
+        .form-grid {
+            grid-template-columns: 1fr;
+        }
+        
+        .form-actions {
+            flex-direction: column;
+        }
+        
+        .btn {
+            justify-content: center;
+        }
+    }
+</style>
+
+<div class="profile-container">
+    <!-- Profile Header -->
+    <div class="profile-header {% if user.userprofile.user_type == 'lecturer' %}lecturer{% endif %}">
+        <div class="profile-avatar">
+            {% if user.userprofile.user_type == 'student' %}👨‍🎓{% elif user.userprofile.user_type == 'lecturer' %}👨‍🏫{% else %}👤{% endif %}
+        </div>
+        <h1 class="profile-name">{{ user.get_full_name|default:user.username }}</h1>
+        <p class="profile-role">{{ user.userprofile.get_user_type_display }}</p>
+    </div>
+    
+    <!-- Profile Form -->
+    <div class="profile-form">
+        <!-- Display Messages -->
+        {% if messages %}
+            {% for message in messages %}
+                <div class="alert alert-{% if message.tags == 'error' %}error{% else %}{{ message.tags }}{% endif %}">
+                    {{ message }}
+                </div>
+            {% endfor %}
+        {% endif %}
+        
+        <!-- Account Information -->
+        <div class="info-section">
+            <h3 class="info-title">Account Information</h3>
+            <p class="info-text">
+                Update your personal information and account details. Changes will be reflected across the system immediately.
+            </p>
+        </div>
+        
+        <form method="post">
+            {% csrf_token %}
+            
+            <div class="form-grid">
+                <!-- First Name -->
+                <div class="form-group">
+                    <label for="first_name" class="form-label">First Name</label>
+                    <input 
+                        type="text" 
+                        id="first_name" 
+                        name="first_name" 
+                        class="form-input" 
+                        value="{{ user.first_name }}" 
+                        required
+                        placeholder="Enter your first name"
+                    >
+                </div>
+                
+                <!-- Last Name -->
+                <div class="form-group">
+                    <label for="last_name" class="form-label">Last Name</label>
+                    <input 
+                        type="text" 
+                        id="last_name" 
+                        name="last_name" 
+                        class="form-input" 
+                        value="{{ user.last_name }}" 
+                        required
+                        placeholder="Enter your last name"
+                    >
+                </div>
+                
+                <!-- Username -->
+                <div class="form-group">
+                    <label for="username" class="form-label">Username</label>
+                    <input 
+                        type="text" 
+                        id="username" 
+                        name="username" 
+                        class="form-input" 
+                        value="{{ user.username }}" 
+                        disabled
+                        title="Username cannot be changed"
+                    >
+                    <small style="color: #666; font-size: 12px;">Username cannot be modified</small>
+                </div>
+                
+                <!-- User Type -->
+                <div class="form-group">
+                    <label for="user_type" class="form-label">Account Type</label>
+                    <select id="user_type" name="user_type" class="form-select" disabled>
+                        <option value="student" {% if user.userprofile.user_type == 'student' %}selected{% endif %}>Student</option>
+                        <option value="lecturer" {% if user.userprofile.user_type == 'lecturer' %}selected{% endif %}>Lecturer</option>
+                        <option value="admin" {% if user.userprofile.user_type == 'admin' %}selected{% endif %}>Admin</option>
+                    </select>
+                    <small style="color: #666; font-size: 12px;">Contact administrator to change account type</small>
+                </div>
+                
+                <!-- Email -->
+                <div class="form-group full-width">
+                    <label for="email" class="form-label">Email Address</label>
+                    <input 
+                        type="email" 
+                        id="email" 
+                        name="email" 
+                        class="form-input" 
+                        value="{{ user.email }}" 
+                        required
+                        placeholder="Enter your email address"
+                    >
+                </div>
+            </div>
+            
+            <!-- Form Actions -->
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">
+                    💾 Save Changes
+                </button>
+                {% if user.userprofile.user_type == 'student' %}
+                    <a href="{% url 'student_dashboard' %}" class="btn btn-secondary">
+                        ❌ Cancel
+                    </a>
+                {% elif user.userprofile.user_type == 'lecturer' %}
+                    <a href="{% url 'lecturer_dashboard' %}" class="btn btn-secondary">
+                        ❌ Cancel
+                    </a>
+                {% else %}
+                    <a href="{% url 'dashboard' %}" class="btn btn-secondary">
+                        ❌ Cancel
+                    </a>
+                {% endif %}
+            </div>
+        </form>
+        
+        <!-- Password Change Section -->
+        <div class="password-section">
+            <div class="info-section">
+                <h3 class="info-title">Security Settings</h3>
+                <p class="info-text">
+                    Change your password to keep your account secure. Use a strong password with at least 8 characters.
+                </p>
+            </div>
+            
+            <form method="post" id="password-form" style="display: none;">
+                {% csrf_token %}
+                <input type="hidden" name="change_password" value="1">
+                
+                <div class="form-grid">
+                    <!-- Current Password -->
+                    <div class="form-group full-width">
+                        <label for="current_password" class="form-label">Current Password</label>
+                        <input 
+                            type="password" 
+                            id="current_password" 
+                            name="current_password" 
+                            class="form-input" 
+                            required
+                            placeholder="Enter your current password"
+                        >
+                    </div>
+                    
+                    <!-- New Password -->
+                    <div class="form-group">
+                        <label for="new_password" class="form-label">New Password</label>
+                        <input 
+                            type="password" 
+                            id="new_password" 
+                            name="new_password" 
+                            class="form-input" 
+                            required
+                            placeholder="Enter new password"
+                            minlength="8"
+                        >
+                        <small style="color: #666; font-size: 12px;">At least 8 characters</small>
+                    </div>
+                    
+                    <!-- Confirm New Password -->
+                    <div class="form-group">
+                        <label for="confirm_password" class="form-label">Confirm New Password</label>
+                        <input 
+                            type="password" 
+                            id="confirm_password" 
+                            name="confirm_password" 
+                            class="form-input" 
+                            required
+                            placeholder="Confirm new password"
+                            minlength="8"
+                        >
+                    </div>
+                </div>
+                
+                <!-- Password Form Actions -->
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">
+                        🔐 Change Password
+                    </button>
+                    <button type="button" class="btn btn-secondary" onclick="togglePasswordForm()">
+                        ❌ Cancel
+                    </button>
+                </div>
+            </form>
+            
+            <div class="form-actions" id="password-toggle">
+                <button type="button" class="btn btn-danger" onclick="togglePasswordForm()">
+                    🔐 Change Password
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function togglePasswordForm() {
+    const form = document.getElementById('password-form');
+    const toggle = document.getElementById('password-toggle');
+    
+    if (form.style.display === 'none' || form.style.display === '') {
+        form.style.display = 'block';
+        toggle.style.display = 'none';
+        // Clear form fields
+        document.getElementById('current_password').value = '';
+        document.getElementById('new_password').value = '';
+        document.getElementById('confirm_password').value = '';
+    } else {
+        form.style.display = 'none';
+        toggle.style.display = 'block';
+    }
+}
+
+// Password confirmation validation
+document.getElementById('confirm_password').addEventListener('input', function() {
+    const newPassword = document.getElementById('new_password').value;
+    const confirmPassword = this.value;
+    
+    if (confirmPassword && newPassword !== confirmPassword) {
+        this.setCustomValidity('Passwords do not match');
+        this.style.borderColor = '#dc3545';
+    } else {
+        this.setCustomValidity('');
+        this.style.borderColor = '#e9ecef';
+    }
+});
+
+// New password validation
+document.getElementById('new_password').addEventListener('input', function() {
+    const confirmPassword = document.getElementById('confirm_password');
+    if (confirmPassword.value && this.value !== confirmPassword.value) {
+        confirmPassword.setCustomValidity('Passwords do not match');
+        confirmPassword.style.borderColor = '#dc3545';
+    } else {
+        confirmPassword.setCustomValidity('');
+        confirmPassword.style.borderColor = '#e9ecef';
+    }
+});
+</script>
+
+{% endblock %}

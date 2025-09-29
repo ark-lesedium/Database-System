@@ -1,0 +1,329 @@
+{% extends 'MainInterface/base.html' %}
+
+{% block title %}Assignments - Database System{% endblock %}
+{% block header %}
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span>Assignments</span>
+        <a href="{% url 'student_dashboard' %}" style="background-color: #6c757d; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px;">Back to Dashboard</a>
+    </div>
+{% endblock %}
+
+{% block content %}
+<style>
+    .assignments-container {
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+    
+    .stats-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-bottom: 30px;
+    }
+    
+    .stat-card {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        text-align: center;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .stat-number {
+        font-size: 32px;
+        font-weight: bold;
+        color: #007bff;
+        margin: 0;
+    }
+    
+    .stat-label {
+        color: #666;
+        margin: 5px 0 0 0;
+        font-size: 14px;
+    }
+    
+    .assignments-section {
+        margin-bottom: 30px;
+    }
+    
+    .section-header {
+        background: #f8f9fa;
+        padding: 15px 20px;
+        border-radius: 8px 8px 0 0;
+        border-left: 4px solid #007bff;
+        margin: 0;
+    }
+    
+    .section-header h3 {
+        margin: 0;
+        color: #333;
+        font-size: 18px;
+    }
+    
+    .assignments-list {
+        background: white;
+        border-radius: 0 0 8px 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .assignment-item {
+        padding: 20px;
+        border-bottom: 1px solid #eee;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .assignment-item:last-child {
+        border-bottom: none;
+    }
+    
+    .assignment-info {
+        flex: 1;
+    }
+    
+    .assignment-title {
+        font-size: 18px;
+        font-weight: bold;
+        color: #333;
+        margin: 0 0 5px 0;
+    }
+    
+    .assignment-course {
+        color: #007bff;
+        font-weight: 500;
+        margin: 0 0 5px 0;
+    }
+    
+    .assignment-due {
+        color: #666;
+        font-size: 14px;
+        margin: 0;
+    }
+    
+    .assignment-actions {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+    }
+    
+    .btn {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 4px;
+        text-decoration: none;
+        font-size: 14px;
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+    
+    .btn-primary {
+        background-color: #007bff;
+        color: white;
+    }
+    
+    .btn-primary:hover {
+        background-color: #0056b3;
+    }
+    
+    .btn-success {
+        background-color: #28a745;
+        color: white;
+    }
+    
+    .btn-warning {
+        background-color: #ffc107;
+        color: #212529;
+    }
+    
+    .btn-danger {
+        background-color: #dc3545;
+        color: white;
+    }
+    
+    .status-badge {
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: bold;
+        text-transform: uppercase;
+    }
+    
+    .status-submitted {
+        background-color: #d4edda;
+        color: #155724;
+    }
+    
+    .status-draft {
+        background-color: #fff3cd;
+        color: #856404;
+    }
+    
+    .status-graded {
+        background-color: #d1ecf1;
+        color: #0c5460;
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 40px;
+        color: #666;
+    }
+    
+    .empty-state i {
+        font-size: 48px;
+        margin-bottom: 15px;
+        color: #ccc;
+    }
+    
+    .due-indicator {
+        font-size: 12px;
+        padding: 2px 6px;
+        border-radius: 3px;
+        margin-left: 10px;
+    }
+    
+    .due-soon {
+        background-color: #fff3cd;
+        color: #856404;
+    }
+    
+    .overdue {
+        background-color: #f8d7da;
+        color: #721c24;
+    }
+</style>
+
+<div class="assignments-container">
+    <!-- Statistics -->
+    <div class="stats-row">
+        <div class="stat-card">
+            <p class="stat-number">{{ total_pending }}</p>
+            <p class="stat-label">Pending</p>
+        </div>
+        <div class="stat-card">
+            <p class="stat-number">{{ total_submitted }}</p>
+            <p class="stat-label">Submitted</p>
+        </div>
+        <div class="stat-card">
+            <p class="stat-number">{{ total_overdue }}</p>
+            <p class="stat-label">Overdue</p>
+        </div>
+        <div class="stat-card">
+            <p class="stat-number">{{ total_assignments }}</p>
+            <p class="stat-label">Total</p>
+        </div>
+    </div>
+
+    <!-- Pending Assignments -->
+    <div class="assignments-section">
+        <div class="section-header">
+            <h3>📝 Pending Assignments ({{ total_pending }})</h3>
+        </div>
+        <div class="assignments-list">
+            {% if pending_assignments %}
+                {% for assignment in pending_assignments %}
+                <div class="assignment-item">
+                    <div class="assignment-info">
+                        <h4 class="assignment-title">{{ assignment.title }}</h4>
+                        <p class="assignment-course">{{ assignment.course.course_code }} - {{ assignment.course.course_name }}</p>
+                        <p class="assignment-due">
+                            Due: {{ assignment.due_date|date:"M d, Y g:i A" }}
+                            {% if assignment.days_until_due <= 3 and assignment.days_until_due > 0 %}
+                                <span class="due-indicator due-soon">Due in {{ assignment.days_until_due }} day{{ assignment.days_until_due|pluralize }}</span>
+                            {% endif %}
+                        </p>
+                    </div>
+                    <div class="assignment-actions">
+                        {% if assignment.user_submission %}
+                            <span class="status-badge status-draft">Draft Saved</span>
+                        {% endif %}
+                        <a href="{% url 'submit_assignment' assignment.id %}" class="btn btn-primary">
+                            {% if assignment.user_submission %}Continue{% else %}Start{% endif %}
+                        </a>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="empty-state">
+                    <div>📝</div>
+                    <p>No pending assignments</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Submitted Assignments -->
+    <div class="assignments-section">
+        <div class="section-header">
+            <h3>✅ Submitted Assignments ({{ total_submitted }})</h3>
+        </div>
+        <div class="assignments-list">
+            {% if submitted_assignments %}
+                {% for assignment in submitted_assignments %}
+                <div class="assignment-item">
+                    <div class="assignment-info">
+                        <h4 class="assignment-title">{{ assignment.title }}</h4>
+                        <p class="assignment-course">{{ assignment.course.course_code }} - {{ assignment.course.course_name }}</p>
+                        <p class="assignment-due">
+                            Submitted: {{ assignment.user_submission.submitted_at|date:"M d, Y g:i A" }}
+                            {% if assignment.user_submission.late_submission %}
+                                <span class="due-indicator overdue">Late</span>
+                            {% endif %}
+                        </p>
+                    </div>
+                    <div class="assignment-actions">
+                        {% if assignment.user_submission.status == 'graded' %}
+                            <span class="status-badge status-graded">Graded: {{ assignment.user_submission.grade }}/{{ assignment.max_points }}</span>
+                        {% else %}
+                            <span class="status-badge status-submitted">Submitted</span>
+                        {% endif %}
+                        <a href="{% url 'submit_assignment' assignment.id %}" class="btn btn-success">View</a>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="empty-state">
+                    <div>✅</div>
+                    <p>No submitted assignments</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Overdue Assignments -->
+    {% if overdue_assignments %}
+    <div class="assignments-section">
+        <div class="section-header">
+            <h3>⚠️ Overdue Assignments ({{ total_overdue }})</h3>
+        </div>
+        <div class="assignments-list">
+            {% for assignment in overdue_assignments %}
+            <div class="assignment-item">
+                <div class="assignment-info">
+                    <h4 class="assignment-title">{{ assignment.title }}</h4>
+                    <p class="assignment-course">{{ assignment.course.course_code }} - {{ assignment.course.course_name }}</p>
+                    <p class="assignment-due">
+                        Was due: {{ assignment.due_date|date:"M d, Y g:i A" }}
+                        <span class="due-indicator overdue">Overdue</span>
+                    </p>
+                </div>
+                <div class="assignment-actions">
+                    {% if assignment.user_submission %}
+                        <span class="status-badge status-draft">Draft Saved</span>
+                    {% endif %}
+                    {% if assignment.late_submission_allowed %}
+                        <a href="{% url 'submit_assignment' assignment.id %}" class="btn btn-warning">Submit Late</a>
+                    {% else %}
+                        <span class="btn btn-danger" style="cursor: not-allowed;">Closed</span>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+{% endblock %}

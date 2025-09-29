@@ -1,0 +1,307 @@
+{% extends 'MainInterface/base.html' %}
+
+{% block title %}Lecturer Assignments - Database System{% endblock %}
+{% block header %}
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span>Assignment Management</span>
+        <a href="{% url 'lecturer_dashboard' %}" style="background-color: #6c757d; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px;">Back to Dashboard</a>
+    </div>
+{% endblock %}
+
+{% block content %}
+<style>
+    .assignments-container {
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+    
+    .stats-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-bottom: 30px;
+    }
+    
+    .stat-card {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        text-align: center;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .stat-number {
+        font-size: 32px;
+        font-weight: bold;
+        color: #007bff;
+        margin: 0;
+    }
+    
+    .stat-label {
+        color: #666;
+        margin: 5px 0 0 0;
+        font-size: 14px;
+    }
+    
+    .assignments-list {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        margin-bottom: 30px;
+    }
+    
+    .list-header {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 8px 8px 0 0;
+        border-left: 4px solid #007bff;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .list-header h3 {
+        margin: 0;
+        color: #333;
+        font-size: 20px;
+    }
+    
+    .assignment-item {
+        padding: 20px;
+        border-bottom: 1px solid #eee;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .assignment-item:last-child {
+        border-bottom: none;
+    }
+    
+    .assignment-info {
+        flex: 1;
+    }
+    
+    .assignment-title {
+        font-size: 18px;
+        font-weight: bold;
+        color: #333;
+        margin: 0 0 5px 0;
+    }
+    
+    .assignment-course {
+        color: #007bff;
+        font-weight: 500;
+        margin: 0 0 5px 0;
+    }
+    
+    .assignment-meta {
+        color: #666;
+        font-size: 14px;
+        margin: 0;
+        display: flex;
+        gap: 20px;
+        flex-wrap: wrap;
+    }
+    
+    .assignment-stats {
+        display: flex;
+        gap: 15px;
+        align-items: center;
+        margin-top: 5px;
+    }
+    
+    .stat-item {
+        background: #f8f9fa;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        color: #666;
+    }
+    
+    .stat-item.pending {
+        background: #fff3cd;
+        color: #856404;
+    }
+    
+    .stat-item.graded {
+        background: #d4edda;
+        color: #155724;
+    }
+    
+    .assignment-actions {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+    }
+    
+    .btn {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 4px;
+        text-decoration: none;
+        font-size: 14px;
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+    
+    .btn-primary {
+        background-color: #007bff;
+        color: white;
+    }
+    
+    .btn-primary:hover {
+        background-color: #0056b3;
+    }
+    
+    .btn-success {
+        background-color: #28a745;
+        color: white;
+    }
+    
+    .btn-success:hover {
+        background-color: #1e7e34;
+    }
+    
+    .btn-warning {
+        background-color: #ffc107;
+        color: #212529;
+    }
+    
+    .btn-warning:hover {
+        background-color: #e0a800;
+    }
+    
+    .status-badge {
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: bold;
+        text-transform: uppercase;
+    }
+    
+    .status-published {
+        background-color: #d4edda;
+        color: #155724;
+    }
+    
+    .status-draft {
+        background-color: #fff3cd;
+        color: #856404;
+    }
+    
+    .status-closed {
+        background-color: #f8d7da;
+        color: #721c24;
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 40px;
+        color: #666;
+    }
+    
+    .empty-state i {
+        font-size: 48px;
+        margin-bottom: 15px;
+        color: #ccc;
+    }
+    
+    .create-button {
+        background-color: #28a745;
+        color: white;
+        padding: 10px 20px;
+        border-radius: 6px;
+        text-decoration: none;
+        font-weight: 500;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+    }
+    
+    .create-button:hover {
+        background-color: #1e7e34;
+    }
+</style>
+
+<div class="assignments-container">
+    <!-- Statistics -->
+    <div class="stats-row">
+        <div class="stat-card">
+            <p class="stat-number">{{ total_assignments }}</p>
+            <p class="stat-label">Total Assignments</p>
+        </div>
+        <div class="stat-card">
+            <p class="stat-number">{{ published_assignments }}</p>
+            <p class="stat-label">Published</p>
+        </div>
+        <div class="stat-card">
+            <p class="stat-number">{{ total_submissions }}</p>
+            <p class="stat-label">Total Submissions</p>
+        </div>
+        <div class="stat-card">
+            <p class="stat-number">{{ pending_grading }}</p>
+            <p class="stat-label">Pending Grading</p>
+        </div>
+    </div>
+
+    <!-- Assignments List -->
+    <div class="assignments-list">
+        <div class="list-header">
+            <h3>📝 My Assignments</h3>
+            <div>
+                <p style="margin: 0; color: #666; font-size: 14px;">Note: Assignment creation is available through the Django admin panel</p>
+            </div>
+        </div>
+        
+        {% if assignments %}
+            {% for assignment in assignments %}
+            <div class="assignment-item">
+                <div class="assignment-info">
+                    <h4 class="assignment-title">{{ assignment.title }}</h4>
+                    <p class="assignment-course">{{ assignment.course.course_code }} - {{ assignment.course.course_name }}</p>
+                    <div class="assignment-meta">
+                        <span>Due: {{ assignment.due_date|date:"M d, Y g:i A" }}</span>
+                        <span>Max Points: {{ assignment.max_points }}</span>
+                        <span>Created: {{ assignment.created_at|date:"M d, Y" }}</span>
+                    </div>
+                    <div class="assignment-stats">
+                        <span class="stat-item">{{ assignment.total_submissions }} submission{{ assignment.total_submissions|pluralize }}</span>
+                        {% if assignment.pending_submissions > 0 %}
+                            <span class="stat-item pending">{{ assignment.pending_submissions }} pending</span>
+                        {% endif %}
+                        {% if assignment.graded_submissions > 0 %}
+                            <span class="stat-item graded">{{ assignment.graded_submissions }} graded</span>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="assignment-actions">
+                    <span class="status-badge status-{{ assignment.status }}">{{ assignment.get_status_display }}</span>
+                    {% if assignment.total_submissions > 0 %}
+                        <a href="{% url 'assignment_submissions' assignment.id %}" class="btn btn-primary">
+                            View Submissions ({{ assignment.total_submissions }})
+                        </a>
+                    {% else %}
+                        <span class="btn btn-secondary" style="opacity: 0.6;">No Submissions</span>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="empty-state">
+                <div>📝</div>
+                <p>No assignments created yet</p>
+                <p>Create assignments through the Django admin panel to get started.</p>
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- Quick Actions -->
+    <div style="text-align: center; margin-top: 30px;">
+        <a href="/admin/MainInterface/assignment/add/" class="create-button" target="_blank">
+            ➕ Create New Assignment
+        </a>
+    </div>
+</div>
+
+{% endblock %}

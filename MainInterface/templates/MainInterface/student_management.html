@@ -1,0 +1,605 @@
+{% extends 'MainInterface/base.html' %}
+
+{% block title %}Student Management - Database System{% endblock %}
+{% block header %}
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span>Student Management</span>
+        <div>
+            <a href="{% url 'lecturer_dashboard' %}" class="btn btn-secondary">Back to Dashboard</a>
+            <a href="{% url 'logout' %}" class="btn btn-danger">Logout</a>
+        </div>
+    </div>
+{% endblock %}
+
+{% block content %}
+<style>
+    .student-container {
+        max-width: 1400px;
+        margin: 0 auto;
+    }
+    
+    .btn {
+        padding: 8px 16px;
+        border-radius: 4px;
+        text-decoration: none;
+        font-size: 14px;
+        margin-right: 10px;
+        display: inline-block;
+        border: none;
+        cursor: pointer;
+        transition: all 0.3s;
+    }
+    
+    .btn-primary {
+        background-color: #28a745;
+        color: white;
+    }
+    
+    .btn-primary:hover {
+        background-color: #218838;
+        transform: translateY(-1px);
+    }
+    
+    .btn-secondary {
+        background-color: #6c757d;
+        color: white;
+    }
+    
+    .btn-secondary:hover {
+        background-color: #545b62;
+    }
+    
+    .btn-info {
+        background-color: #17a2b8;
+        color: white;
+    }
+    
+    .btn-info:hover {
+        background-color: #138496;
+    }
+    
+    .btn-danger {
+        background-color: #dc3545;
+        color: white;
+    }
+    
+    .btn-danger:hover {
+        background-color: #c82333;
+    }
+    
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-bottom: 20px;
+    }
+    
+    .stat-card {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        text-align: center;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        border-left: 4px solid #28a745;
+    }
+    
+    .stat-number {
+        font-size: 28px;
+        font-weight: bold;
+        color: #28a745;
+        margin: 0;
+    }
+    
+    .stat-label {
+        color: #666;
+        margin: 5px 0 0 0;
+        font-size: 14px;
+    }
+    
+    .filters-section {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+    }
+    
+    .filters-title {
+        font-size: 18px;
+        font-weight: bold;
+        margin-bottom: 15px;
+        color: #333;
+    }
+    
+    .filters-form {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        align-items: end;
+    }
+    
+    .form-group {
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .form-group label {
+        font-weight: bold;
+        margin-bottom: 5px;
+        color: #333;
+    }
+    
+    .form-group input,
+    .form-group select {
+        padding: 8px 12px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 14px;
+    }
+    
+    .form-group input:focus,
+    .form-group select:focus {
+        outline: none;
+        border-color: #28a745;
+        box-shadow: 0 0 0 2px rgba(40, 167, 69, 0.2);
+    }
+    
+    .action-buttons {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+    }
+    
+    .students-table {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        overflow: hidden;
+    }
+    
+    .table-header {
+        background: #28a745;
+        color: white;
+        padding: 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .table-title {
+        font-size: 18px;
+        font-weight: bold;
+        margin: 0;
+    }
+    
+    .student-count {
+        background: rgba(255,255,255,0.2);
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 14px;
+    }
+    
+    table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    
+    th, td {
+        padding: 15px;
+        text-align: left;
+        border-bottom: 1px solid #dee2e6;
+    }
+    
+    th {
+        background-color: #f8f9fa;
+        font-weight: bold;
+        color: #333;
+    }
+    
+    tr:hover {
+        background-color: #f8f9fa;
+    }
+    
+    .student-info {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    
+    .student-avatar {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: #28a745;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-weight: bold;
+        font-size: 16px;
+    }
+    
+    .student-details h4 {
+        margin: 0;
+        font-size: 16px;
+        color: #333;
+    }
+    
+    .student-details p {
+        margin: 2px 0 0 0;
+        font-size: 14px;
+        color: #666;
+    }
+    
+    .course-badge {
+        display: inline-block;
+        padding: 4px 8px;
+        background: #e9ecef;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: bold;
+        color: #495057;
+    }
+    
+    .status-badge {
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: bold;
+        text-transform: uppercase;
+    }
+    
+    .status-enrolled {
+        background: #d4edda;
+        color: #155724;
+    }
+    
+    .status-pending {
+        background: #fff3cd;
+        color: #856404;
+    }
+    
+    .status-waitlisted {
+        background: #d1ecf1;
+        color: #0c5460;
+    }
+    
+    .status-dropped {
+        background: #f8d7da;
+        color: #721c24;
+    }
+    
+    .course-section {
+        margin-bottom: 30px;
+    }
+    
+    .course-header {
+        background: #f8f9fa;
+        padding: 15px 20px;
+        border-left: 4px solid #28a745;
+        margin-bottom: 15px;
+    }
+    
+    .course-title {
+        font-size: 18px;
+        font-weight: bold;
+        margin: 0;
+        color: #333;
+    }
+    
+    .course-stats {
+        font-size: 14px;
+        color: #666;
+        margin: 5px 0 0 0;
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .empty-icon {
+        font-size: 64px;
+        margin-bottom: 20px;
+    }
+    
+    .empty-title {
+        font-size: 24px;
+        color: #333;
+        margin-bottom: 10px;
+    }
+    
+    .empty-description {
+        color: #666;
+        margin-bottom: 20px;
+    }
+    
+    .alert {
+        padding: 15px;
+        border-radius: 6px;
+        margin-bottom: 20px;
+    }
+    
+    .alert-success {
+        background-color: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+    }
+    
+    .alert-error {
+        background-color: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+    }
+    
+    @media (max-width: 768px) {
+        .filters-form {
+            grid-template-columns: 1fr;
+        }
+        
+        .action-buttons {
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        table {
+            font-size: 14px;
+        }
+        
+        th, td {
+            padding: 10px 8px;
+        }
+        
+        .student-info {
+            flex-direction: column;
+            text-align: center;
+        }
+        
+        .stats-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+</style>
+
+<div class="student-container">
+    <!-- Display Messages -->
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{% if message.tags == 'error' %}error{% else %}{{ message.tags }}{% endif %}">
+                {{ message }}
+            </div>
+        {% endfor %}
+    {% endif %}
+    
+    <!-- Statistics -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <p class="stat-number">{{ total_students }}</p>
+            <p class="stat-label">Total Enrolled Students</p>
+        </div>
+        <div class="stat-card">
+            <p class="stat-number">{{ pending_enrollments }}</p>
+            <p class="stat-label">Pending Enrollments</p>
+        </div>
+        <div class="stat-card">
+            <p class="stat-number">{{ waitlisted_students }}</p>
+            <p class="stat-label">Waitlisted Students</p>
+        </div>
+        <div class="stat-card">
+            <p class="stat-number">{{ lecturer_courses.count }}</p>
+            <p class="stat-label">My Courses</p>
+        </div>
+    </div>
+    
+    <!-- Filters -->
+    <div class="filters-section">
+        <h3 class="filters-title">Filter Students</h3>
+        <form method="GET" class="filters-form">
+            <div class="form-group">
+                <label for="course">Filter by Course:</label>
+                <select name="course" id="course">
+                    <option value="">All Courses</option>
+                    {% for course in lecturer_courses %}
+                        <option value="{{ course.id }}" {% if course_filter == course.id|stringformat:"s" %}selected{% endif %}>
+                            {{ course.course_code }} - {{ course.course_name }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="status">Filter by Status:</label>
+                <select name="status" id="status">
+                    <option value="">All Statuses</option>
+                    <option value="enrolled" {% if status_filter == 'enrolled' %}selected{% endif %}>Enrolled</option>
+                    <option value="pending" {% if status_filter == 'pending' %}selected{% endif %}>Pending</option>
+                    <option value="waitlisted" {% if status_filter == 'waitlisted' %}selected{% endif %}>Waitlisted</option>
+                    <option value="dropped" {% if status_filter == 'dropped' %}selected{% endif %}>Dropped</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="search">Search by Name:</label>
+                <input type="text" name="search" id="search" value="{{ search_query }}" placeholder="Enter student name...">
+            </div>
+            
+            <div class="form-group">
+                <button type="submit" class="btn btn-primary">Apply Filters</button>
+                <a href="{% url 'student_management' %}" class="btn btn-secondary">Clear Filters</a>
+            </div>
+        </form>
+    </div>
+    
+    <!-- Action Buttons -->
+    <div class="action-buttons">
+        <h2 style="margin: 0; color: #333;">Student Enrollments</h2>
+        <div>
+            <a href="{% url 'download_enrollment_report' %}" class="btn btn-info">
+                📊 Download Enrollment Report
+            </a>
+            <a href="{% url 'manage_courses' %}" class="btn btn-secondary">
+                📚 Manage Courses
+            </a>
+        </div>
+    </div>
+    
+    <!-- Students by Course -->
+    {% if course_enrollments %}
+        {% for course_code, course_data in course_enrollments.items %}
+            <div class="course-section">
+                <div class="course-header">
+                    <h3 class="course-title">{{ course_data.course.course_code }} - {{ course_data.course.course_name }}</h3>
+                    <p class="course-stats">
+                        {{ course_data.enrollments|length }} student{{ course_data.enrollments|length|pluralize }}
+                        • {{ course_data.course.get_level_display }}
+                        • {{ course_data.course.get_semester_display }}
+                    </p>
+                </div>
+                
+                <div class="students-table">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Student</th>
+                                <th>Email</th>
+                                <th>Status</th>
+                                <th>Enrollment Date</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for enrollment in course_data.enrollments %}
+                                <tr>
+                                    <td>
+                                        <div class="student-info">
+                                            <div class="student-avatar">
+                                                {{ enrollment.student.first_name|first }}{{ enrollment.student.last_name|first }}
+                                            </div>
+                                            <div class="student-details">
+                                                <h4>{{ enrollment.student.first_name }} {{ enrollment.student.last_name }}</h4>
+                                                <p>Student ID: {{ enrollment.student.username }}</p>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>{{ enrollment.student.email }}</td>
+                                    <td>
+                                        <span class="status-badge status-{{ enrollment.status }}">
+                                            {{ enrollment.status|title }}
+                                        </span>
+                                    </td>
+                                    <td>{{ enrollment.enrollment_date|date:"M d, Y" }}</td>
+                                    <td>
+                                        {% if enrollment.status == 'pending' %}
+                                            <a href="#" class="btn btn-primary btn-small" onclick="approveEnrollment({{ enrollment.id }})">
+                                                ✓ Approve
+                                            </a>
+                                            <a href="#" class="btn btn-danger btn-small" onclick="rejectEnrollment({{ enrollment.id }})">
+                                                ✗ Reject
+                                            </a>
+                                        {% elif enrollment.status == 'enrolled' %}
+                                            <a href="#" class="btn btn-info btn-small">
+                                                👁️ View Grades
+                                            </a>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        {% endfor %}
+    {% else %}
+        <div class="empty-state">
+            <div class="empty-icon">👥</div>
+            <h2 class="empty-title">No Students Found</h2>
+            <p class="empty-description">
+                {% if search_query or course_filter or status_filter %}
+                    No students match your current filters. Try adjusting your search criteria.
+                {% else %}
+                    You don't have any students enrolled in your courses yet.
+                {% endif %}
+            </p>
+            {% if search_query or course_filter or status_filter %}
+                <a href="{% url 'student_management' %}" class="btn btn-primary">
+                    Clear Filters
+                </a>
+            {% endif %}
+        </div>
+    {% endif %}
+</div>
+
+<script>
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+function approveEnrollment(enrollmentId) {
+    if (confirm('Approve this enrollment?')) {
+        // Add AJAX call to approve enrollment
+        fetch(`/approve-enrollment/${enrollmentId}/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+                'Content-Type': 'application/json',
+            },
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Failed to approve enrollment: ' + data.error);
+            }
+        })
+        .catch(error => {
+            alert('Error: ' + error);
+        });
+    }
+}
+
+function rejectEnrollment(enrollmentId) {
+    if (confirm('Reject this enrollment? This action cannot be undone.')) {
+        // Add AJAX call to reject enrollment
+        fetch(`/reject-enrollment/${enrollmentId}/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+                'Content-Type': 'application/json',
+            },
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Failed to reject enrollment: ' + data.error);
+            }
+        })
+        .catch(error => {
+            alert('Error: ' + error);
+        });
+    }
+}
+</script>
+
+{% endblock %}

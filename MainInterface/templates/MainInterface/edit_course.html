@@ -1,0 +1,377 @@
+{% extends 'MainInterface/base.html' %}
+
+{% block title %}Edit Course - Database System{% endblock %}
+{% block header %}
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span>Edit Course</span>
+        <div>
+            <a href="{% url 'manage_courses' %}" class="btn btn-secondary">Back to Courses</a>
+            <a href="{% url 'lecturer_dashboard' %}" class="btn btn-secondary">Dashboard</a>
+            <a href="{% url 'logout' %}" class="btn btn-danger">Logout</a>
+        </div>
+    </div>
+{% endblock %}
+
+{% block content %}
+<style>
+    .edit-container {
+        max-width: 800px;
+        margin: 0 auto;
+    }
+    
+    .btn {
+        padding: 8px 16px;
+        border-radius: 4px;
+        text-decoration: none;
+        font-size: 14px;
+        margin-right: 10px;
+        display: inline-block;
+        border: none;
+        cursor: pointer;
+        transition: all 0.3s;
+    }
+    
+    .btn-secondary {
+        background-color: #6c757d;
+        color: white;
+    }
+    
+    .btn-secondary:hover {
+        background-color: #545b62;
+        transform: translateY(-1px);
+    }
+    
+    .btn-danger {
+        background-color: #dc3545;
+        color: white;
+    }
+    
+    .btn-danger:hover {
+        background-color: #c82333;
+        transform: translateY(-1px);
+    }
+    
+    .btn-primary {
+        background-color: #28a745;
+        color: white;
+        font-size: 16px;
+        padding: 12px 24px;
+    }
+    
+    .btn-primary:hover {
+        background-color: #218838;
+        transform: translateY(-1px);
+    }
+    
+    .btn-outline {
+        background-color: transparent;
+        border: 2px solid #6c757d;
+        color: #6c757d;
+    }
+    
+    .btn-outline:hover {
+        background-color: #6c757d;
+        color: white;
+    }
+    
+    .form-card {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        overflow: hidden;
+        margin-bottom: 20px;
+    }
+    
+    .form-header {
+        background: #28a745;
+        color: white;
+        padding: 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .form-title {
+        font-size: 20px;
+        font-weight: bold;
+        margin: 0;
+    }
+    
+    .course-code-badge {
+        background: rgba(255,255,255,0.2);
+        padding: 6px 12px;
+        border-radius: 4px;
+        font-family: monospace;
+        font-size: 14px;
+    }
+    
+    .form-body {
+        padding: 30px;
+    }
+    
+    .form-group {
+        margin-bottom: 20px;
+    }
+    
+    .form-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+        margin-bottom: 20px;
+    }
+    
+    .form-label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: bold;
+        color: #333;
+    }
+    
+    .form-label.required::after {
+        content: ' *';
+        color: #dc3545;
+    }
+    
+    .form-control {
+        width: 100%;
+        padding: 12px;
+        border: 2px solid #e9ecef;
+        border-radius: 6px;
+        font-size: 14px;
+        transition: border-color 0.3s;
+        box-sizing: border-box;
+    }
+    
+    .form-control:focus {
+        border-color: #28a745;
+        outline: none;
+        box-shadow: 0 0 0 0.2rem rgba(40, 167, 69, 0.25);
+    }
+    
+    .form-control.error {
+        border-color: #dc3545;
+    }
+    
+    textarea.form-control {
+        resize: vertical;
+        min-height: 100px;
+    }
+    
+    .form-help {
+        font-size: 12px;
+        color: #666;
+        margin-top: 5px;
+    }
+    
+    .form-actions {
+        display: flex;
+        gap: 15px;
+        justify-content: flex-end;
+        padding-top: 20px;
+        border-top: 1px solid #e9ecef;
+    }
+    
+    .alert {
+        padding: 15px;
+        border-radius: 6px;
+        margin-bottom: 20px;
+        border-left: 4px solid;
+    }
+    
+    .alert-success {
+        background-color: #d4edda;
+        color: #155724;
+        border-left-color: #28a745;
+    }
+    
+    .alert-error {
+        background-color: #f8d7da;
+        color: #721c24;
+        border-left-color: #dc3545;
+    }
+    
+    .enrollment-info {
+        background: #f8f9fa;
+        border: 1px solid #e9ecef;
+        border-radius: 6px;
+        padding: 15px;
+        margin-bottom: 20px;
+    }
+    
+    .enrollment-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 15px;
+        margin-bottom: 15px;
+    }
+    
+    .stat-item {
+        text-align: center;
+    }
+    
+    .stat-number {
+        font-size: 24px;
+        font-weight: bold;
+        color: #28a745;
+        margin: 0;
+    }
+    
+    .stat-label {
+        font-size: 12px;
+        color: #666;
+        margin: 0;
+    }
+    
+    .warning-text {
+        color: #856404;
+        background-color: #fff3cd;
+        border: 1px solid #ffeaa7;
+        border-radius: 4px;
+        padding: 8px 12px;
+        font-size: 13px;
+        margin-top: 10px;
+    }
+    
+    @media (max-width: 768px) {
+        .form-row {
+            grid-template-columns: 1fr;
+        }
+        
+        .form-actions {
+            flex-direction: column;
+        }
+        
+        .enrollment-stats {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+</style>
+
+<div class="edit-container">
+    <!-- Display Messages -->
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{% if message.tags == 'error' %}error{% else %}{{ message.tags }}{% endif %}">
+                {{ message }}
+            </div>
+        {% endfor %}
+    {% endif %}
+    
+    <!-- Course Edit Form -->
+    <div class="form-card">
+        <div class="form-header">
+            <h1 class="form-title">Edit Course</h1>
+            <span class="course-code-badge">{{ course.course_code }}</span>
+        </div>
+        
+        <div class="form-body">
+            <!-- Current Enrollment Info -->
+            <div class="enrollment-info">
+                <h3 style="margin-top: 0; color: #333;">Current Enrollment Status</h3>
+                <div class="enrollment-stats">
+                    <div class="stat-item">
+                        <p class="stat-number">{{ course.get_enrolled_count }}</p>
+                        <p class="stat-label">Enrolled Students</p>
+                    </div>
+                    <div class="stat-item">
+                        <p class="stat-number">{{ course.max_students }}</p>
+                        <p class="stat-label">Maximum Capacity</p>
+                    </div>
+                    <div class="stat-item">
+                        <p class="stat-number">{{ course.max_students|add:0|add:course.get_enrolled_count|sub:course.max_students }}</p>
+                        <p class="stat-label">Available Slots</p>
+                    </div>
+                </div>
+                {% if course.get_enrolled_count > 0 %}
+                    <div class="warning-text">
+                        ⚠️ This course has active enrollments. Reducing maximum students below current enrollment count will be blocked.
+                    </div>
+                {% endif %}
+            </div>
+            
+            <form method="post">
+                {% csrf_token %}
+                
+                <!-- Course Code and Name -->
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="course_code" class="form-label required">Course Code</label>
+                        <input type="text" id="course_code" name="course_code" class="form-control" 
+                               value="{{ course.course_code }}" maxlength="20" required>
+                        <div class="form-help">Unique identifier for the course (e.g., CS101, MATH201)</div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="credits" class="form-label required">Credits</label>
+                        <input type="number" id="credits" name="credits" class="form-control" 
+                               value="{{ course.credits }}" min="1" max="10" required>
+                        <div class="form-help">Academic credits (1-10)</div>
+                    </div>
+                </div>
+                
+                <!-- Course Name -->
+                <div class="form-group">
+                    <label for="course_name" class="form-label required">Course Name</label>
+                    <input type="text" id="course_name" name="course_name" class="form-control" 
+                           value="{{ course.course_name }}" maxlength="200" required>
+                    <div class="form-help">Full name of the course</div>
+                </div>
+                
+                <!-- Description -->
+                <div class="form-group">
+                    <label for="description" class="form-label">Description</label>
+                    <textarea id="description" name="description" class="form-control" rows="4">{{ course.description }}</textarea>
+                    <div class="form-help">Detailed description of the course content and objectives</div>
+                </div>
+                
+                <!-- Level and Semester -->
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="level" class="form-label required">Level</label>
+                        <select id="level" name="level" class="form-control" required>
+                            {% for value, label in level_choices %}
+                                <option value="{{ value }}" {% if course.level == value %}selected{% endif %}>
+                                    {{ label }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-help">Academic level of the course</div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="semester" class="form-label required">Semester</label>
+                        <select id="semester" name="semester" class="form-control" required>
+                            {% for value, label in semester_choices %}
+                                <option value="{{ value }}" {% if course.semester == value %}selected{% endif %}>
+                                    {{ label }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-help">Semester when the course is offered</div>
+                    </div>
+                </div>
+                
+                <!-- Maximum Students -->
+                <div class="form-group">
+                    <label for="max_students" class="form-label required">Maximum Students</label>
+                    <input type="number" id="max_students" name="max_students" class="form-control" 
+                           value="{{ course.max_students }}" min="{{ course.get_enrolled_count }}" max="500" required>
+                    <div class="form-help">
+                        Maximum number of students that can enroll (1-500)
+                        {% if course.get_enrolled_count > 0 %}
+                            <br><strong>Minimum allowed: {{ course.get_enrolled_count }} (current enrollment)</strong>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <!-- Form Actions -->
+                <div class="form-actions">
+                    <a href="{% url 'manage_courses' %}" class="btn btn-outline">Cancel</a>
+                    <button type="submit" class="btn btn-primary">Update Course</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

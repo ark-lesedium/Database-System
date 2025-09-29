@@ -134,6 +134,13 @@
         border-radius: 8px;
         text-align: center;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        transition: transform 0.2s, box-shadow 0.2s;
+        cursor: pointer;
+    }
+    
+    .stat-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.15);
     }
     
     .stat-number {
@@ -164,6 +171,53 @@
     .announcements-badge {
         border-left-color: #dc3545;
     }
+    
+    .assignment-row {
+        padding: 15px 20px;
+        border-bottom: 1px solid #eee;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        transition: background-color 0.2s, transform 0.1s;
+        cursor: pointer;
+    }
+    
+    .assignment-row:hover {
+        background-color: #f8f9fa;
+        transform: translateX(2px);
+    }
+    
+    .assignment-row:last-child {
+        border-bottom: none;
+    }
+    
+    .submit-btn {
+        background: #007bff;
+        color: white;
+        padding: 8px 16px;
+        border-radius: 4px;
+        text-decoration: none;
+        font-size: 14px;
+        font-weight: 500;
+        transition: all 0.2s;
+        cursor: pointer;
+        border: none;
+    }
+    
+    .submit-btn:hover {
+        background: #0056b3;
+        transform: translateY(-1px);
+        box-shadow: 0 2px 4px rgba(0,123,255,0.3);
+    }
+    
+    .draft-badge {
+        background: #fff3cd;
+        color: #856404;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: bold;
+    }
 </style>
 
 <div class="welcome-section">
@@ -180,8 +234,8 @@
         <p class="stat-number">{{ current_gpa|default:"N/A" }}</p>
         <p class="stat-label">Current GPA</p>
     </div>
-    <div class="stat-card">
-        <p class="stat-number">{{ pending_assignments|default:"0" }}</p>
+    <div class="stat-card" data-url="{% url 'assignments' %}">
+        <p class="stat-number">{{ pending_assignments_count|default:"0" }}</p>
         <p class="stat-label">Pending Assignments</p>
     </div>
     <div class="stat-card">
@@ -189,6 +243,63 @@
         <p class="stat-label">Attendance Rate</p>
     </div>
 </div>
+
+<!-- Pending Assignments Section -->
+{% if pending_assignments %}
+<div style="background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 30px;">
+    <div style="background: #f8f9fa; padding: 15px 20px; border-radius: 8px 8px 0 0; border-left: 4px solid #dc3545;">
+        <h3 style="margin: 0; color: #333; display: flex; justify-content: space-between; align-items: center;">
+            <span>📝 Pending Assignments</span>
+            <a href="{% url 'assignments' %}" style="font-size: 14px; color: #007bff; text-decoration: none;">View All ({{ pending_assignments_count }})</a>
+        </h3>
+    </div>
+    <div style="padding: 0;">
+        {% for assignment in pending_assignments %}
+        <div class="assignment-row" data-url="{% url 'submit_assignment' assignment.id %}">
+            <div style="flex: 1; pointer-events: none;">
+                <h4 style="margin: 0 0 5px 0; color: #333; font-size: 16px; font-weight: 600;">{{ assignment.title }}</h4>
+                <p style="margin: 0 0 5px 0; color: #007bff; font-size: 14px; font-weight: 500;">{{ assignment.course.course_code }} - {{ assignment.course.course_name }}</p>
+                <p style="margin: 0; color: #666; font-size: 13px;">
+                    Due: {{ assignment.due_date|date:"M d, Y g:i A" }}
+                    {% if assignment.days_until_due <= 3 and assignment.days_until_due > 0 %}
+                        <span style="background: #fff3cd; color: #856404; padding: 2px 6px; border-radius: 3px; font-size: 11px; margin-left: 8px; font-weight: bold;">Due in {{ assignment.days_until_due }} day{{ assignment.days_until_due|pluralize }}</span>
+                    {% elif assignment.is_overdue %}
+                        <span style="background: #f8d7da; color: #721c24; padding: 2px 6px; border-radius: 3px; font-size: 11px; margin-left: 8px; font-weight: bold;">Overdue</span>
+                    {% endif %}
+                </p>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center; pointer-events: auto;">
+                {% if assignment.user_submission %}
+                    <span class="draft-badge">DRAFT</span>
+                {% endif %}
+                <a href="{% url 'submit_assignment' assignment.id %}" class="submit-btn" onclick="event.stopPropagation();">
+                    {% if assignment.user_submission %}Continue{% else %}Submit{% endif %}
+                </a>
+            </div>
+        </div>
+        {% endfor %}
+        {% if pending_assignments_count > 5 %}
+        <div style="padding: 15px 20px; text-align: center; border-top: 1px solid #eee;">
+            <a href="{% url 'assignments' %}" style="color: #007bff; text-decoration: none;">View {{ pending_assignments_count|add:"-5" }} more assignment{{ pending_assignments_count|add:"-5"|pluralize }}</a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Quick Assignment Actions -->
+{% if pending_assignments_count > 0 %}
+<div style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); color: white; padding: 20px; border-radius: 8px; margin-bottom: 30px; text-align: center;">
+    <h3 style="margin: 0 0 10px 0;">⚡ Quick Actions</h3>
+    <p style="margin: 0 0 15px 0; opacity: 0.9;">You have {{ pending_assignments_count }} pending assignment{{ pending_assignments_count|pluralize }} to complete</p>
+    <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;">
+        <a href="{% url 'assignments' %}" style="background: rgba(255,255,255,0.2); color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-weight: 500; border: 1px solid rgba(255,255,255,0.3);">View All Assignments</a>
+        {% if pending_assignments %}
+            <a href="{% url 'submit_assignment' pending_assignments.0.id %}" style="background: white; color: #dc3545; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-weight: 500;">Submit Next Assignment</a>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
 
 <div class="dashboard-grid">
     <!-- Profile Management -->
@@ -199,7 +310,7 @@
         </div>
         
         <div class="card-actions">
-            <a href="#" class="btn-primary">Edit Profile</a>
+            <a href="{% url 'profile_management' %}" class="btn-primary">Edit Profile</a>
             <a href="#" class="btn-secondary">Change Password</a>
         </div>
     </div>
@@ -212,7 +323,7 @@
         </div>
        
         <div class="card-actions">
-            <a href="#" class="btn-primary">Browse Courses</a>
+            <a href="{% url 'browse_courses' %}" class="btn-primary">Browse Courses</a>
             <a href="#" class="btn-secondary">Registration Status</a>
         </div>
     </div>
@@ -225,8 +336,8 @@
         </div>
        
         <div class="card-actions">
-            <a href="#" class="btn-primary">My Courses</a>
-            <a href="#" class="btn-secondary">Course Details</a>
+            <a href="{% url 'enrolled_courses' %}" class="btn-primary">My Courses</a>
+            <a href="{% url 'enrolled_courses' %}?status=enrolled" class="btn-secondary">Active Only</a>
         </div>
     </div>
 
@@ -238,8 +349,8 @@
         </div>
        
         <div class="card-actions">
-            <a href="#" class="btn-primary">View Grades</a>
-            <a href="#" class="btn-secondary">Grade History</a>
+            <a href="{% url 'view_grades' %}" class="btn-primary">View Grades</a>
+            <a href="{% url 'view_grades' %}?grade_filter=A" class="btn-secondary">A Grades Only</a>
         </div>
     </div>
 
@@ -251,7 +362,7 @@
         </div>
        
         <div class="card-actions">
-            <a href="#" class="btn-primary">View Calendar</a>
+            <a href="{% url 'academic_calendar' %}" class="btn-primary">View Calendar</a>
             <a href="#" class="btn-secondary">Exam Schedule</a>
         </div>
     </div>
@@ -264,8 +375,8 @@
         </div>
      
         <div class="card-actions">
-            <a href="#" class="btn-primary">View All</a>
-            <a href="#" class="btn-secondary">Mark as Read</a>
+            <a href="{% url 'announcements' %}" class="btn-primary">View All</a>
+            <a href="{% url 'announcements' %}" class="btn-secondary">Latest News</a>
         </div>
     </div>
 
@@ -277,8 +388,8 @@
         </div>
        
         <div class="card-actions">
-            <a href="#" class="btn-primary">Browse Materials</a>
-            <a href="#" class="btn-secondary">Recent Uploads</a>
+            <a href="{% url 'study_materials' %}" class="btn-primary">Browse Materials</a>
+            <a href="{% url 'study_materials' %}" class="btn-secondary">Recent Uploads</a>
         </div>
     </div>
 
@@ -288,10 +399,18 @@
             <div class="card-icon">📝</div>
             <h3 class="card-title">Assignments</h3>
         </div>
-     
+        <div class="card-description">
+            <p style="margin: 5px 0; font-size: 14px;">
+                <strong>{{ pending_assignments_count }}</strong> pending • 
+                <strong>{{ submitted_assignments_count }}</strong> submitted
+                {% if overdue_assignments_count > 0 %}
+                • <strong style="color: #dc3545;">{{ overdue_assignments_count }}</strong> overdue
+                {% endif %}
+            </p>
+        </div>
         <div class="card-actions">
-            <a href="#" class="btn-primary">Submit Assignment</a>
-            <a href="#" class="btn-secondary">View Submissions</a>
+            <a href="{% url 'assignments' %}" class="btn-primary">View Assignments</a>
+            <a href="{% url 'view_submissions' %}" class="btn-secondary">View Submissions</a>
         </div>
     </div>
 
@@ -316,8 +435,8 @@
         </div>
      
         <div class="card-actions">
-            <a href="#" class="btn-primary">View Progress</a>
-            <a href="#" class="btn-secondary">Performance Report</a>
+            <a href="{% url 'academic_progress' %}" class="btn-primary">View Progress</a>
+            <a href="{% url 'download_progress_report' %}" class="btn-secondary">📄 Download Report</a>
         </div>
     </div>
 </div>
@@ -329,5 +448,32 @@
         <a href="#" style="color: #007bff; text-decoration: none;">FAQ</a>
     </p>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Make assignment rows clickable
+    const assignmentRows = document.querySelectorAll('.assignment-row[data-url]');
+    assignmentRows.forEach(row => {
+        row.addEventListener('click', function(e) {
+            // Don't navigate if clicking on a button or link
+            if (e.target.tagName === 'A' || e.target.tagName === 'BUTTON') {
+                return;
+            }
+            window.location.href = this.getAttribute('data-url');
+        });
+        
+        // Add visual feedback
+        row.style.cursor = 'pointer';
+    });
+    
+    // Make stat cards clickable
+    const statCards = document.querySelectorAll('.stat-card[data-url]');
+    statCards.forEach(card => {
+        card.addEventListener('click', function() {
+            window.location.href = this.getAttribute('data-url');
+        });
+    });
+});
+</script>
 
 {% endblock %}

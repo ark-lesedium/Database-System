@@ -1,0 +1,340 @@
+{% extends 'MainInterface/base.html' %}
+
+{% block title %}Add Course - Database System{% endblock %}
+{% block header %}
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span>Add New Course</span>
+        <div>
+            <a href="{% url 'manage_courses' %}" style="background-color: #6c757d; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px; margin-right: 10px;">Back to Courses</a>
+            <a href="{% url 'logout' %}" style="background-color: #dc3545; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px;">Logout</a>
+        </div>
+    </div>
+{% endblock %}
+
+{% block content %}
+<style>
+    .add-course-container {
+        max-width: 800px;
+        margin: 0 auto;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        overflow: hidden;
+    }
+    
+    .course-header {
+        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        color: white;
+        padding: 30px;
+        text-align: center;
+    }
+    
+    .course-icon {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        background: rgba(255,255,255,0.2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 36px;
+        margin: 0 auto 15px;
+    }
+    
+    .header-title {
+        font-size: 24px;
+        margin: 0 0 10px 0;
+    }
+    
+    .header-subtitle {
+        font-size: 16px;
+        opacity: 0.9;
+        margin: 0;
+    }
+    
+    .course-form {
+        padding: 30px;
+    }
+    
+    .form-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+        margin-bottom: 20px;
+    }
+    
+    .form-group {
+        margin-bottom: 20px;
+    }
+    
+    .form-group.full-width {
+        grid-column: 1 / -1;
+    }
+    
+    .form-label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: bold;
+        color: #333;
+    }
+    
+    .form-input, .form-select, .form-textarea {
+        width: 100%;
+        padding: 12px;
+        border: 2px solid #e9ecef;
+        border-radius: 6px;
+        font-size: 16px;
+        transition: border-color 0.3s;
+        box-sizing: border-box;
+    }
+    
+    .form-input:focus, .form-select:focus, .form-textarea:focus {
+        outline: none;
+        border-color: #28a745;
+    }
+    
+    .form-textarea {
+        resize: vertical;
+        min-height: 100px;
+    }
+    
+    .form-help {
+        font-size: 12px;
+        color: #666;
+        margin-top: 5px;
+    }
+    
+    .form-actions {
+        display: flex;
+        gap: 15px;
+        justify-content: flex-end;
+        margin-top: 30px;
+        padding-top: 20px;
+        border-top: 1px solid #e9ecef;
+    }
+    
+    .btn {
+        padding: 12px 24px;
+        border: none;
+        border-radius: 6px;
+        font-size: 16px;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        transition: all 0.3s;
+        font-weight: 500;
+    }
+    
+    .btn-primary {
+        background-color: #28a745;
+        color: white;
+    }
+    
+    .btn-primary:hover {
+        background-color: #218838;
+        transform: translateY(-1px);
+    }
+    
+    .btn-secondary {
+        background-color: #6c757d;
+        color: white;
+    }
+    
+    .btn-secondary:hover {
+        background-color: #545b62;
+        transform: translateY(-1px);
+    }
+    
+    .alert {
+        padding: 15px;
+        border-radius: 6px;
+        margin-bottom: 20px;
+    }
+    
+    .alert-success {
+        background-color: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+    }
+    
+    .alert-error {
+        background-color: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+    }
+    
+    .info-section {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 6px;
+        margin-bottom: 20px;
+    }
+    
+    .info-title {
+        font-size: 18px;
+        font-weight: bold;
+        color: #333;
+        margin: 0 0 10px 0;
+    }
+    
+    .info-text {
+        color: #666;
+        margin: 0;
+        line-height: 1.5;
+    }
+    
+    @media (max-width: 768px) {
+        .form-grid {
+            grid-template-columns: 1fr;
+        }
+        
+        .form-actions {
+            flex-direction: column;
+        }
+        
+        .btn {
+            justify-content: center;
+        }
+    }
+</style>
+
+<div class="add-course-container">
+    <!-- Course Header -->
+    <div class="course-header">
+        <div class="course-icon">📚</div>
+        <h1 class="header-title">Add New Course</h1>
+        <p class="header-subtitle">Create a new course for students to enroll in</p>
+    </div>
+    
+    <!-- Course Form -->
+    <div class="course-form">
+        <!-- Display Messages -->
+        {% if messages %}
+            {% for message in messages %}
+                <div class="alert alert-{% if message.tags == 'error' %}error{% else %}{{ message.tags }}{% endif %}">
+                    {{ message }}
+                </div>
+            {% endfor %}
+        {% endif %}
+        
+        <!-- Course Information -->
+        <div class="info-section">
+            <h3 class="info-title">Course Information</h3>
+            <p class="info-text">
+                Fill in the details below to create a new course. All fields marked with * are required.
+            </p>
+        </div>
+        
+        <form method="post">
+            {% csrf_token %}
+            
+            <div class="form-grid">
+                <!-- Course Code -->
+                <div class="form-group">
+                    <label for="course_code" class="form-label">Course Code *</label>
+                    <input 
+                        type="text" 
+                        id="course_code" 
+                        name="course_code" 
+                        class="form-input" 
+                        required
+                        placeholder="e.g., CS101, MATH200"
+                        value="{{ request.POST.course_code }}"
+                        style="text-transform: uppercase;"
+                    >
+                    <div class="form-help">Unique identifier for the course (letters and numbers only)</div>
+                </div>
+                
+                <!-- Credits -->
+                <div class="form-group">
+                    <label for="credits" class="form-label">Credits *</label>
+                    <select id="credits" name="credits" class="form-select" required>
+                        <option value="1" {% if request.POST.credits == '1' %}selected{% endif %}>1 Credit</option>
+                        <option value="2" {% if request.POST.credits == '2' %}selected{% endif %}>2 Credits</option>
+                        <option value="3" {% if request.POST.credits == '3' or not request.POST.credits %}selected{% endif %}>3 Credits</option>
+                        <option value="4" {% if request.POST.credits == '4' %}selected{% endif %}>4 Credits</option>
+                        <option value="5" {% if request.POST.credits == '5' %}selected{% endif %}>5 Credits</option>
+                        <option value="6" {% if request.POST.credits == '6' %}selected{% endif %}>6 Credits</option>
+                    </select>
+                </div>
+                
+                <!-- Level -->
+                <div class="form-group">
+                    <label for="level" class="form-label">Course Level *</label>
+                    <select id="level" name="level" class="form-select" required>
+                        <option value="100" {% if request.POST.level == '100' or not request.POST.level %}selected{% endif %}>100 Level (Freshman)</option>
+                        <option value="200" {% if request.POST.level == '200' %}selected{% endif %}>200 Level (Sophomore)</option>
+                        <option value="300" {% if request.POST.level == '300' %}selected{% endif %}>300 Level (Junior)</option>
+                        <option value="400" {% if request.POST.level == '400' %}selected{% endif %}>400 Level (Senior)</option>
+                    </select>
+                </div>
+                
+                <!-- Semester -->
+                <div class="form-group">
+                    <label for="semester" class="form-label">Semester *</label>
+                    <select id="semester" name="semester" class="form-select" required>
+                        <option value="1" {% if request.POST.semester == '1' or not request.POST.semester %}selected{% endif %}>Semester 1</option>
+                        <option value="2" {% if request.POST.semester == '2' %}selected{% endif %}>Semester 2</option>
+                        <option value="3" {% if request.POST.semester == '3' %}selected{% endif %}>Summer Session</option>
+                    </select>
+                </div>
+                
+                <!-- Course Name -->
+                <div class="form-group full-width">
+                    <label for="course_name" class="form-label">Course Name *</label>
+                    <input 
+                        type="text" 
+                        id="course_name" 
+                        name="course_name" 
+                        class="form-input" 
+                        required
+                        placeholder="Enter the full course name"
+                        value="{{ request.POST.course_name }}"
+                    >
+                </div>
+                
+                <!-- Max Students -->
+                <div class="form-group full-width">
+                    <label for="max_students" class="form-label">Maximum Students</label>
+                    <input 
+                        type="number" 
+                        id="max_students" 
+                        name="max_students" 
+                        class="form-input" 
+                        min="1" 
+                        max="500"
+                        value="{{ request.POST.max_students|default:'50' }}"
+                    >
+                    <div class="form-help">Maximum number of students allowed to enroll (1-500)</div>
+                </div>
+                
+                <!-- Description -->
+                <div class="form-group full-width">
+                    <label for="description" class="form-label">Course Description *</label>
+                    <textarea 
+                        id="description" 
+                        name="description" 
+                        class="form-textarea" 
+                        required
+                        placeholder="Provide a detailed description of the course, including objectives, topics covered, and any other relevant information..."
+                    >{{ request.POST.description }}</textarea>
+                    <div class="form-help">Detailed information about the course content and objectives</div>
+                </div>
+            </div>
+            
+            <!-- Form Actions -->
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">
+                    ➕ Create Course
+                </button>
+                <a href="{% url 'manage_courses' %}" class="btn btn-secondary">
+                    ❌ Cancel
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}

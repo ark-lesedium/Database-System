@@ -1,0 +1,525 @@
+{% extends 'MainInterface/base.html' %}
+
+{% block title %}Announcements{% endblock %}
+
+{% block header %}
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span>Announcements</span>
+        <div>
+            {% if user.userprofile.user_type == 'student' %}
+                <a href="{% url 'student_dashboard' %}" class="btn btn-secondary">Back to Dashboard</a>
+            {% elif user.userprofile.user_type == 'lecturer' %}
+                <a href="{% url 'lecturer_dashboard' %}" class="btn btn-secondary">Back to Dashboard</a>
+            {% else %}
+                <a href="{% url 'dashboard' %}" class="btn btn-secondary">Back to Dashboard</a>
+            {% endif %}
+            <a href="{% url 'logout' %}" class="btn btn-danger">Logout</a>
+        </div>
+    </div>
+{% endblock %}
+
+{% block content %}
+<style>
+    .announcements-container {
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+    
+    .btn {
+        padding: 8px 16px;
+        border-radius: 4px;
+        text-decoration: none;
+        font-size: 14px;
+        margin-right: 10px;
+        display: inline-block;
+    }
+    
+    .btn-secondary {
+        background-color: #6c757d;
+        color: white;
+    }
+    
+    .btn-danger {
+        background-color: #dc3545;
+        color: white;
+    }
+    
+    .announcements-header {
+        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+        color: white;
+        padding: 30px;
+        border-radius: 8px;
+        margin-bottom: 30px;
+        text-align: center;
+    }
+    
+    .announcements-title {
+        font-size: 28px;
+        font-weight: bold;
+        margin: 0 0 10px 0;
+    }
+    
+    .announcements-subtitle {
+        font-size: 16px;
+        opacity: 0.9;
+        margin: 0;
+    }
+    
+    .announcements-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 20px;
+        margin-top: 20px;
+    }
+    
+    .stat-item {
+        background: rgba(255,255,255,0.1);
+        padding: 15px;
+        border-radius: 6px;
+        text-align: center;
+    }
+    
+    .stat-number {
+        font-size: 24px;
+        font-weight: bold;
+        margin: 0 0 5px 0;
+    }
+    
+    .stat-label {
+        font-size: 12px;
+        opacity: 0.8;
+        margin: 0;
+    }
+    
+    .announcements-content {
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        gap: 30px;
+    }
+    
+    .announcements-main {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+    }
+    
+    .announcements-sidebar {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+    }
+    
+    .section-title {
+        font-size: 20px;
+        font-weight: bold;
+        color: #333;
+        margin: 0 0 15px 0;
+        padding-bottom: 8px;
+        border-bottom: 2px solid #007bff;
+    }
+    
+    .announcement-card {
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        border-left: 4px solid #007bff;
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    
+    .announcement-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    
+    .announcement-card.pinned {
+        border-left-color: #ffc107;
+        background: linear-gradient(135deg, #fff9c4 0%, #ffffff 100%);
+    }
+    
+    .announcement-card.priority-urgent {
+        border-left-color: #dc3545;
+    }
+    
+    .announcement-card.priority-high {
+        border-left-color: #fd7e14;
+    }
+    
+    .announcement-card.priority-medium {
+        border-left-color: #007bff;
+    }
+    
+    .announcement-card.priority-low {
+        border-left-color: #6c757d;
+    }
+    
+    .announcement-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 15px;
+    }
+    
+    .announcement-title {
+        font-size: 18px;
+        font-weight: bold;
+        color: #333;
+        margin: 0;
+        flex: 1;
+    }
+    
+    .announcement-badges {
+        display: flex;
+        gap: 8px;
+        margin-left: 15px;
+    }
+    
+    .badge {
+        padding: 4px 8px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: bold;
+        text-transform: uppercase;
+    }
+    
+    .badge-pinned {
+        background: #ffc107;
+        color: #856404;
+    }
+    
+    .badge-urgent {
+        background: #dc3545;
+        color: white;
+    }
+    
+    .badge-high {
+        background: #fd7e14;
+        color: white;
+    }
+    
+    .badge-medium {
+        background: #007bff;
+        color: white;
+    }
+    
+    .badge-low {
+        background: #6c757d;
+        color: white;
+    }
+    
+    .badge-course {
+        background: #17a2b8;
+        color: white;
+    }
+    
+    .announcement-content {
+        color: #555;
+        line-height: 1.6;
+        margin-bottom: 15px;
+    }
+    
+    .announcement-meta {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding-top: 15px;
+        border-top: 1px solid #e9ecef;
+        font-size: 12px;
+        color: #666;
+    }
+    
+    .meta-left {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+    
+    .meta-right {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 2px;
+    }
+    
+    .author-info {
+        font-weight: 500;
+    }
+    
+    .date-info {
+        font-style: italic;
+    }
+    
+    .sidebar-card {
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .card-title {
+        font-size: 16px;
+        font-weight: bold;
+        color: #333;
+        margin: 0 0 15px 0;
+        padding-bottom: 8px;
+        border-bottom: 1px solid #e9ecef;
+    }
+    
+    .recent-item {
+        padding: 8px 0;
+        border-bottom: 1px solid #f0f0f0;
+    }
+    
+    .recent-item:last-child {
+        border-bottom: none;
+    }
+    
+    .recent-title {
+        font-size: 13px;
+        font-weight: 500;
+        color: #333;
+        margin-bottom: 3px;
+    }
+    
+    .recent-date {
+        font-size: 11px;
+        color: #666;
+    }
+    
+    .course-item {
+        padding: 8px 12px;
+        margin: 5px 0;
+        background: #f8f9fa;
+        border-radius: 4px;
+        border-left: 3px solid #007bff;
+    }
+    
+    .course-code {
+        font-weight: bold;
+        color: #007bff;
+    }
+    
+    .course-name {
+        font-size: 12px;
+        color: #666;
+    }
+    
+    .empty-announcements {
+        text-align: center;
+        padding: 60px 20px;
+        color: #666;
+    }
+    
+    .empty-icon {
+        font-size: 64px;
+        margin-bottom: 20px;
+        opacity: 0.3;
+    }
+    
+    .empty-title {
+        font-size: 24px;
+        margin-bottom: 10px;
+        color: #333;
+    }
+    
+    .empty-text {
+        font-size: 16px;
+        line-height: 1.5;
+    }
+    
+    @media (max-width: 768px) {
+        .announcements-content {
+            grid-template-columns: 1fr;
+        }
+        
+        .announcement-header {
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .announcement-badges {
+            margin-left: 0;
+        }
+        
+        .announcement-meta {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 5px;
+        }
+        
+        .meta-right {
+            align-items: flex-start;
+        }
+    }
+</style>
+
+<div class="announcements-container">
+    <!-- Display Messages -->
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{% if message.tags == 'error' %}error{% else %}{{ message.tags }}{% endif %}">
+                {{ message }}
+            </div>
+        {% endfor %}
+    {% endif %}
+    
+    <!-- Announcements Header -->
+    <div class="announcements-header">
+        <h1 class="announcements-title">📢 Announcements</h1>
+        <p class="announcements-subtitle">Stay updated with the latest news and information</p>
+        
+        <div class="announcements-stats">
+            <div class="stat-item">
+                <div class="stat-number">{{ total_announcements }}</div>
+                <p class="stat-label">Total Announcements</p>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number">{{ pinned_announcements|length }}</div>
+                <p class="stat-label">Pinned</p>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number">{{ recent_announcements|length }}</div>
+                <p class="stat-label">This Week</p>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number">{{ user_courses|length }}</div>
+                <p class="stat-label">My Courses</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Main Content -->
+    <div class="announcements-content">
+        <!-- Main Announcements -->
+        <div class="announcements-main">
+            <!-- Pinned Announcements -->
+            {% if pinned_announcements %}
+                <div>
+                    <h2 class="section-title">📌 Pinned Announcements</h2>
+                    {% for announcement in pinned_announcements %}
+                        <div class="announcement-card pinned priority-{{ announcement.priority }}">
+                            <div class="announcement-header">
+                                <h3 class="announcement-title">{{ announcement.title }}</h3>
+                                <div class="announcement-badges">
+                                    <span class="badge badge-pinned">Pinned</span>
+                                    <span class="badge badge-{{ announcement.priority }}">{{ announcement.get_priority_display }}</span>
+                                    {% if announcement.course %}
+                                        <span class="badge badge-course">{{ announcement.course.course_code }}</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="announcement-content">
+                                {{ announcement.content|linebreaks }}
+                            </div>
+                            <div class="announcement-meta">
+                                <div class="meta-left">
+                                    <span class="author-info">By {{ announcement.get_author_name }}</span>
+                                    <span class="date-info">{{ announcement.created_at|date:"M d, Y g:i A" }}</span>
+                                </div>
+                                <div class="meta-right">
+                                    <span>{{ announcement.get_audience_display }}</span>
+                                    {% if announcement.expires_at %}
+                                        <span>Expires: {{ announcement.expires_at|date:"M d, Y" }}</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+            
+            <!-- Regular Announcements -->
+            <div>
+                <h2 class="section-title">📋 All Announcements</h2>
+                {% if regular_announcements %}
+                    {% for announcement in regular_announcements %}
+                        <div class="announcement-card priority-{{ announcement.priority }}">
+                            <div class="announcement-header">
+                                <h3 class="announcement-title">{{ announcement.title }}</h3>
+                                <div class="announcement-badges">
+                                    <span class="badge badge-{{ announcement.priority }}">{{ announcement.get_priority_display }}</span>
+                                    {% if announcement.course %}
+                                        <span class="badge badge-course">{{ announcement.course.course_code }}</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="announcement-content">
+                                {{ announcement.content|linebreaks }}
+                            </div>
+                            <div class="announcement-meta">
+                                <div class="meta-left">
+                                    <span class="author-info">By {{ announcement.get_author_name }}</span>
+                                    <span class="date-info">{{ announcement.created_at|date:"M d, Y g:i A" }}</span>
+                                </div>
+                                <div class="meta-right">
+                                    <span>{{ announcement.get_audience_display }}</span>
+                                    {% if announcement.expires_at %}
+                                        <span>Expires: {{ announcement.expires_at|date:"M d, Y" }}</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    {% if not pinned_announcements %}
+                        <div class="empty-announcements">
+                            <div class="empty-icon">📢</div>
+                            <h3 class="empty-title">No Announcements</h3>
+                            <p class="empty-text">There are currently no announcements available for you.</p>
+                        </div>
+                    {% endif %}
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Sidebar -->
+        <div class="announcements-sidebar">
+            <!-- Recent Activity -->
+            <div class="sidebar-card">
+                <h3 class="card-title">Recent Activity</h3>
+                {% if recent_announcements %}
+                    {% for announcement in recent_announcements|slice:":5" %}
+                        <div class="recent-item">
+                            <div class="recent-title">{{ announcement.title|truncatechars:40 }}</div>
+                            <div class="recent-date">{{ announcement.created_at|timesince }} ago</div>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <p style="color: #666; font-style: italic;">No recent activity</p>
+                {% endif %}
+            </div>
+            
+            <!-- My Courses -->
+            {% if user_courses %}
+                <div class="sidebar-card">
+                    <h3 class="card-title">My Courses</h3>
+                    {% for course in user_courses %}
+                        <div class="course-item">
+                            <div class="course-code">{{ course.course_code }}</div>
+                            <div class="course-name">{{ course.course_name }}</div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+            
+            <!-- Quick Links -->
+            <div class="sidebar-card">
+                <h3 class="card-title">Quick Links</h3>
+                <div style="display: flex; flex-direction: column; gap: 8px;">
+                    {% if user.userprofile.user_type == 'student' %}
+                        <a href="{% url 'browse_courses' %}" class="btn btn-secondary" style="margin: 0;">Browse Courses</a>
+                        <a href="{% url 'enrolled_courses' %}" class="btn btn-secondary" style="margin: 0;">My Courses</a>
+                        <a href="{% url 'view_grades' %}" class="btn btn-secondary" style="margin: 0;">View Grades</a>
+                        <a href="{% url 'academic_calendar' %}" class="btn btn-secondary" style="margin: 0;">Academic Calendar</a>
+                    {% elif user.userprofile.user_type == 'lecturer' %}
+                        <a href="{% url 'manage_courses' %}" class="btn btn-secondary" style="margin: 0;">Manage Courses</a>
+                        <a href="{% url 'add_course' %}" class="btn btn-secondary" style="margin: 0;">Add Course</a>
+                        <a href="{% url 'academic_calendar' %}" class="btn btn-secondary" style="margin: 0;">Academic Calendar</a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
