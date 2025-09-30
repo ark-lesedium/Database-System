@@ -215,7 +215,7 @@
             <a href="{% url 'student_management' %}" class="btn-primary">View Students</a>
             <a href="{% url 'download_enrollment_report' %}" class="btn-secondary">Enrollment Reports</a>
         </div>
-    </div>
+    </div>  
 
     <!-- Assignment Management -->
     <div class="dashboard-card assignments-badge">
@@ -226,7 +226,7 @@
      
         <div class="card-actions">
             <a href="{% url 'lecturer_assignments' %}" class="btn-primary">Manage Assignments</a>
-            <a href="/admin/MainInterface/assignment/add/" class="btn-secondary">Create Assignment</a>
+            <a href="{% url 'create_assignment' %}" class="btn-secondary">Create Assignment</a>
         </div>
     </div>
 
@@ -251,8 +251,8 @@
         </div>
     
         <div class="card-actions">
-            <a href="#" class="btn-primary">Upload Materials</a>
-            <a href="#" class="btn-secondary">Organize Content</a>
+            <a href="{% url 'manage_materials' %}" class="btn-primary">Manage Materials</a>
+            <a href="{% url 'upload_material' %}" class="btn-secondary">Upload Material</a>
         </div>
     </div>
 
@@ -264,8 +264,8 @@
         </div>
        
         <div class="card-actions">
-            <a href="#" class="btn-primary">View Schedule</a>
-            <a href="#" class="btn-secondary">Plan Classes</a>
+            <a href="{% url 'view_schedule' %}" class="btn-primary">View Schedule</a>
+            <a href="{% url 'manage_schedule' %}" class="btn-secondary">Manage Schedule</a>
         </div>
     </div>
 
@@ -291,7 +291,7 @@
     
         <div class="card-actions">
             <a href="{% url 'announcements' %}" class="btn-primary">View All</a>
-            <a href="{% url 'announcements' %}" class="btn-secondary">Latest News</a>
+            <a href="{% url 'manage_announcements' %}" class="btn-secondary">Manage Announcements</a>
         </div>
     </div>
 
@@ -303,8 +303,8 @@
         </div>
      
         <div class="card-actions">
-            <a href="#" class="btn-primary">Generate Reports</a>
-            <a href="#" class="btn-secondary">Performance Analytics</a>
+            <a href="{% url 'academic_reports' %}" class="btn-primary">Generate Reports</a>
+            <a href="{% url 'academic_reports' %}" class="btn-secondary">Student Reports</a>
         </div>
     </div>
 

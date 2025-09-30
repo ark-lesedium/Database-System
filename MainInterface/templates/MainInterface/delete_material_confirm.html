@@ -1,0 +1,220 @@
+{% extends 'MainInterface/base.html' %}
+
+{% block title %}Delete Material - Database System{% endblock %}
+{% block header %}
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span>Delete Course Material</span>
+        <div>
+            <a href="{% url 'manage_materials' %}" style="background-color: #6c757d; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px; margin-right: 10px;">Back to Materials</a>
+            <a href="{% url 'logout' %}" style="background-color: #dc3545; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px;">Logout</a>
+        </div>
+    </div>
+{% endblock %}
+
+{% block content %}
+<style>
+    .delete-container {
+        max-width: 600px;
+        margin: 50px auto;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        overflow: hidden;
+    }
+    
+    .delete-header {
+        background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+        color: white;
+        padding: 30px;
+        text-align: center;
+    }
+    
+    .delete-icon {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        background: rgba(255,255,255,0.2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 36px;
+        margin: 0 auto 15px;
+    }
+    
+    .header-title {
+        font-size: 24px;
+        margin: 0 0 10px 0;
+    }
+    
+    .header-subtitle {
+        font-size: 16px;
+        opacity: 0.9;
+        margin: 0;
+    }
+    
+    .delete-content {
+        padding: 30px;
+    }
+    
+    .warning-box {
+        background: #f8d7da;
+        border: 1px solid #f5c6cb;
+        border-radius: 6px;
+        padding: 20px;
+        margin-bottom: 25px;
+        border-left: 4px solid #dc3545;
+    }
+    
+    .warning-box h4 {
+        margin: 0 0 15px 0;
+        color: #721c24;
+        font-size: 18px;
+    }
+    
+    .warning-box ul {
+        margin: 0;
+        padding-left: 20px;
+        color: #721c24;
+    }
+    
+    .warning-box li {
+        margin-bottom: 8px;
+    }
+    
+    .material-info {
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 6px;
+        padding: 20px;
+        margin-bottom: 25px;
+    }
+    
+    .material-info h4 {
+        margin: 0 0 15px 0;
+        color: #333;
+        font-size: 18px;
+    }
+    
+    .info-grid {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 10px 20px;
+        align-items: start;
+    }
+    
+    .info-label {
+        font-weight: bold;
+        color: #666;
+    }
+    
+    .info-value {
+        color: #333;
+    }
+    
+    .form-actions {
+        display: flex;
+        gap: 15px;
+        justify-content: center;
+        padding-top: 20px;
+        border-top: 1px solid #e9ecef;
+    }
+    
+    .btn {
+        padding: 12px 24px;
+        border: none;
+        border-radius: 6px;
+        font-size: 16px;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 500;
+        transition: all 0.3s;
+    }
+    
+    .btn-danger {
+        background-color: #dc3545;
+        color: white;
+    }
+    
+    .btn-danger:hover {
+        background-color: #c82333;
+        transform: translateY(-1px);
+    }
+    
+    .btn-secondary {
+        background-color: #6c757d;
+        color: white;
+    }
+    
+    .btn-secondary:hover {
+        background-color: #545b62;
+    }
+</style>
+
+<div class="delete-container">
+    <div class="delete-header">
+        <div class="delete-icon">🗑️</div>
+        <h2 class="header-title">Delete Course Material</h2>
+        <p class="header-subtitle">This action cannot be undone</p>
+    </div>
+
+    <div class="delete-content">
+        <!-- Warning -->
+        <div class="warning-box">
+            <h4>⚠️ Warning: Permanent Deletion</h4>
+            <ul>
+                <li>This material will be permanently deleted from the system</li>
+                <li>The file will be removed from the server and cannot be recovered</li>
+                <li>Students will no longer be able to access or download this material</li>
+                <li>Download statistics and history will be lost</li>
+            </ul>
+        </div>
+
+        <!-- Material Information -->
+        <div class="material-info">
+            <h4>📄 Material Details</h4>
+            <div class="info-grid">
+                <span class="info-label">Title:</span>
+                <span class="info-value">{{ material.title }}</span>
+                
+                <span class="info-label">Course:</span>
+                <span class="info-value">{{ material.course.course_code }} - {{ material.course.course_name }}</span>
+                
+                <span class="info-label">Type:</span>
+                <span class="info-value">{{ material.get_material_type_display }}</span>
+                
+                <span class="info-label">File:</span>
+                <span class="info-value">{{ material.file.name|default:"No file" }}</span>
+                
+                <span class="info-label">Size:</span>
+                <span class="info-value">{{ material.get_file_size_display }}</span>
+                
+                <span class="info-label">Downloads:</span>
+                <span class="info-value">{{ material.download_count }}</span>
+                
+                <span class="info-label">Created:</span>
+                <span class="info-value">{{ material.created_at|date:"M d, Y g:i A" }}</span>
+                
+                <span class="info-label">Status:</span>
+                <span class="info-value">{% if material.is_active %}Active{% else %}Inactive{% endif %}</span>
+            </div>
+        </div>
+
+        <!-- Confirmation Form -->
+        <form method="POST">
+            {% csrf_token %}
+            <div class="form-actions">
+                <a href="{% url 'manage_materials' %}" class="btn btn-secondary">
+                    ❌ Cancel
+                </a>
+                <button type="submit" class="btn btn-danger">
+                    🗑️ Yes, Delete Material
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}

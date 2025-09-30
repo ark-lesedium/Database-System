@@ -1,0 +1,391 @@
+{% extends 'MainInterface/base.html' %}
+
+{% block title %}Create Assignment - Database System{% endblock %}
+{% block header %}
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span>Create New Assignment</span>
+        <div>
+            <a href="{% url 'lecturer_assignments' %}" style="background-color: #6c757d; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px; margin-right: 10px;">Back to Assignments</a>
+            <a href="{% url 'logout' %}" style="background-color: #dc3545; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px;">Logout</a>
+        </div>
+    </div>
+{% endblock %}
+
+{% block content %}
+<style>
+    .create-assignment-container {
+        max-width: 900px;
+        margin: 0 auto;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        overflow: hidden;
+    }
+    
+    .assignment-header {
+        background: linear-gradient(135deg, #17a2b8 0%, #007bff 100%);
+        color: white;
+        padding: 30px;
+        text-align: center;
+    }
+    
+    .assignment-icon {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        background: rgba(255,255,255,0.2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 36px;
+        margin: 0 auto 15px;
+    }
+    
+    .header-title {
+        font-size: 24px;
+        margin: 0 0 10px 0;
+    }
+    
+    .header-subtitle {
+        font-size: 16px;
+        opacity: 0.9;
+        margin: 0;
+    }
+    
+    .assignment-form {
+        padding: 30px;
+    }
+    
+    .form-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+        margin-bottom: 20px;
+    }
+    
+    .form-group {
+        margin-bottom: 20px;
+    }
+    
+    .form-group.full-width {
+        grid-column: 1 / -1;
+    }
+    
+    .form-label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: bold;
+        color: #333;
+    }
+    
+    .form-input, .form-select, .form-textarea {
+        width: 100%;
+        padding: 12px;
+        border: 2px solid #e9ecef;
+        border-radius: 6px;
+        font-size: 16px;
+        transition: border-color 0.3s;
+        box-sizing: border-box;
+    }
+    
+    .form-input:focus, .form-select:focus, .form-textarea:focus {
+        outline: none;
+        border-color: #17a2b8;
+    }
+    
+    .form-textarea {
+        resize: vertical;
+        min-height: 100px;
+    }
+    
+    .form-help {
+        font-size: 14px;
+        color: #666;
+        margin-top: 5px;
+        font-style: italic;
+    }
+    
+    .form-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+    }
+    
+    .form-actions {
+        margin-top: 30px;
+        padding-top: 20px;
+        border-top: 1px solid #e9ecef;
+        display: flex;
+        gap: 15px;
+        justify-content: flex-end;
+    }
+    
+    .btn {
+        padding: 12px 24px;
+        border: none;
+        border-radius: 6px;
+        font-size: 16px;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 500;
+        transition: all 0.3s;
+    }
+    
+    .btn-primary {
+        background-color: #17a2b8;
+        color: white;
+    }
+    
+    .btn-primary:hover {
+        background-color: #138496;
+        transform: translateY(-1px);
+    }
+    
+    .btn-secondary {
+        background-color: #6c757d;
+        color: white;
+    }
+    
+    .btn-secondary:hover {
+        background-color: #545b62;
+    }
+    
+    .checkbox-group {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 10px;
+    }
+    
+    .checkbox {
+        width: auto;
+        margin: 0;
+    }
+    
+    .checkbox-label {
+        margin: 0;
+        font-weight: normal;
+    }
+    
+    .section-divider {
+        border-top: 2px solid #e9ecef;
+        margin: 30px 0 20px 0;
+        padding-top: 20px;
+    }
+    
+    .section-title {
+        color: #17a2b8;
+        font-size: 18px;
+        font-weight: bold;
+        margin-bottom: 15px;
+    }
+</style>
+
+<div class="create-assignment-container">
+    <div class="assignment-header">
+        <div class="assignment-icon">📝</div>
+        <h2 class="header-title">Create New Assignment</h2>
+        <p class="header-subtitle">Set up a new assignment for your students</p>
+    </div>
+
+    <div class="assignment-form">
+        <form method="POST">
+            {% csrf_token %}
+            
+            <!-- Basic Information -->
+            <div class="form-grid">
+                <!-- Assignment Title -->
+                <div class="form-group">
+                    <label for="title" class="form-label">Assignment Title *</label>
+                    <input 
+                        type="text" 
+                        id="title" 
+                        name="title" 
+                        class="form-input" 
+                        required
+                        placeholder="e.g., Midterm Project, Essay Assignment..."
+                        value="{{ request.POST.title }}"
+                    >
+                    <div class="form-help">Choose a clear, descriptive title for the assignment</div>
+                </div>
+                
+                <!-- Course Selection -->
+                <div class="form-group">
+                    <label for="course" class="form-label">Course *</label>
+                    <select id="course" name="course" class="form-select" required>
+                        <option value="">Select a course...</option>
+                        {% for course in courses %}
+                            <option value="{{ course.id }}" 
+                                {% if request.POST.course == course.id|stringformat:"s" %}selected{% endif %}>
+                                {{ course.course_code }} - {{ course.course_name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                    <div class="form-help">Select the course this assignment belongs to</div>
+                </div>
+            </div>
+            
+            <!-- Assignment Description -->
+            <div class="form-group full-width">
+                <label for="description" class="form-label">Assignment Description *</label>
+                <textarea 
+                    id="description" 
+                    name="description" 
+                    class="form-textarea" 
+                    required
+                    placeholder="Provide a brief overview of what students need to do..."
+                >{{ request.POST.description }}</textarea>
+                <div class="form-help">Brief description of the assignment objectives and requirements</div>
+            </div>
+            
+            <!-- Assignment Details -->
+            <div class="form-row">
+                <!-- Due Date -->
+                <div class="form-group">
+                    <label for="due_date" class="form-label">Due Date & Time *</label>
+                    <input 
+                        type="datetime-local" 
+                        id="due_date" 
+                        name="due_date" 
+                        class="form-input" 
+                        required
+                        value="{{ request.POST.due_date }}"
+                    >
+                    <div class="form-help">When the assignment is due</div>
+                </div>
+                
+                <!-- Max Points -->
+                <div class="form-group">
+                    <label for="max_points" class="form-label">Maximum Points</label>
+                    <input 
+                        type="number" 
+                        id="max_points" 
+                        name="max_points" 
+                        class="form-input" 
+                        step="0.01"
+                        min="0"
+                        max="1000"
+                        value="{{ request.POST.max_points|default:'100' }}"
+                    >
+                    <div class="form-help">Total points possible for this assignment</div>
+                </div>
+            </div>
+            
+            <!-- Status and Instructions -->
+            <div class="form-row">
+                <!-- Status -->
+                <div class="form-group">
+                    <label for="status" class="form-label">Status</label>
+                    <select id="status" name="status" class="form-select">
+                        <option value="draft" {% if request.POST.status == 'draft' or not request.POST.status %}selected{% endif %}>Draft</option>
+                        <option value="published" {% if request.POST.status == 'published' %}selected{% endif %}>Published</option>
+                        <option value="closed" {% if request.POST.status == 'closed' %}selected{% endif %}>Closed</option>
+                    </select>
+                    <div class="form-help">Draft assignments are not visible to students</div>
+                </div>
+            </div>
+            
+            <!-- Detailed Instructions -->
+            <div class="form-group full-width">
+                <label for="instructions" class="form-label">Detailed Instructions</label>
+                <textarea 
+                    id="instructions" 
+                    name="instructions" 
+                    class="form-textarea" 
+                    style="min-height: 120px;"
+                    placeholder="Provide detailed instructions, grading criteria, formatting requirements, etc..."
+                >{{ request.POST.instructions }}</textarea>
+                <div class="form-help">Detailed instructions and grading criteria for students</div>
+            </div>
+            
+            <!-- File Submission Settings -->
+            <div class="section-divider">
+                <h3 class="section-title">📎 File Submission Settings</h3>
+            </div>
+            
+            <div class="form-row">
+                <!-- Allowed File Types -->
+                <div class="form-group">
+                    <label for="allowed_file_types" class="form-label">Allowed File Types</label>
+                    <input 
+                        type="text" 
+                        id="allowed_file_types" 
+                        name="allowed_file_types" 
+                        class="form-input" 
+                        value="{{ request.POST.allowed_file_types|default:'pdf,doc,docx,txt' }}"
+                        placeholder="pdf,doc,docx,txt"
+                    >
+                    <div class="form-help">Comma-separated list of allowed file extensions</div>
+                </div>
+                
+                <!-- Max File Size -->
+                <div class="form-group">
+                    <label for="max_file_size" class="form-label">Max File Size (bytes)</label>
+                    <input 
+                        type="number" 
+                        id="max_file_size" 
+                        name="max_file_size" 
+                        class="form-input" 
+                        min="1048576"
+                        max="104857600"
+                        value="{{ request.POST.max_file_size|default:'10485760' }}"
+                    >
+                    <div class="form-help">Maximum file size in bytes (10485760 = 10MB)</div>
+                </div>
+            </div>
+            
+            <!-- Late Submission Settings -->
+            <div class="section-divider">
+                <h3 class="section-title">⏰ Late Submission Settings</h3>
+            </div>
+            
+            <div class="form-row">
+                <!-- Late Submission Allowed -->
+                <div class="form-group">
+                    <div class="checkbox-group">
+                        <input 
+                            type="checkbox" 
+                            id="late_submission_allowed" 
+                            name="late_submission_allowed" 
+                            class="checkbox"
+                            {% if request.POST.late_submission_allowed or not request.POST %}checked{% endif %}
+                        >
+                        <label for="late_submission_allowed" class="checkbox-label">Allow late submissions</label>
+                    </div>
+                    <div class="form-help">Whether students can submit after the due date</div>
+                </div>
+                
+                <!-- Late Penalty -->
+                <div class="form-group">
+                    <label for="late_penalty_per_day" class="form-label">Late Penalty (% per day)</label>
+                    <input 
+                        type="number" 
+                        id="late_penalty_per_day" 
+                        name="late_penalty_per_day" 
+                        class="form-input" 
+                        step="0.1"
+                        min="0"
+                        max="100"
+                        value="{{ request.POST.late_penalty_per_day|default:'10.0' }}"
+                    >
+                    <div class="form-help">Percentage penalty applied per day late</div>
+                </div>
+            </div>
+            
+            <!-- Form Actions -->
+            <div class="form-actions">
+                <a href="{% url 'lecturer_assignments' %}" class="btn btn-secondary">
+                    ❌ Cancel
+                </a>
+                <button type="submit" class="btn btn-primary">
+                    ➕ Create Assignment
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}

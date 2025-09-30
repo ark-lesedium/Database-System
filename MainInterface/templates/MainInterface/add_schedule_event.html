@@ -1,0 +1,302 @@
+{% extends 'MainInterface/base.html' %}
+
+{% block title %}Add Schedule Event - Database System{% endblock %}
+{% block header %}
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span>Add Schedule Event</span>
+        <a href="{% url 'logout' %}" style="background-color: #dc3545; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px;">Logout</a>
+    </div>
+{% endblock %}
+
+{% block content %}
+<style>
+    .form-container {
+        max-width: 800px;
+        margin: 0 auto;
+        background: white;
+        padding: 30px;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .form-title {
+        font-size: 24px;
+        font-weight: bold;
+        color: #333;
+        margin-bottom: 20px;
+        text-align: center;
+    }
+    
+    .form-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 20px;
+        margin-bottom: 20px;
+    }
+    
+    .form-group {
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .form-group.full-width {
+        grid-column: 1 / -1;
+    }
+    
+    .form-label {
+        margin-bottom: 5px;
+        font-weight: bold;
+        color: #333;
+    }
+    
+    .form-label.required::after {
+        content: " *";
+        color: #dc3545;
+    }
+    
+    .form-input {
+        padding: 10px 12px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 14px;
+        transition: border-color 0.2s;
+    }
+    
+    .form-input:focus {
+        outline: none;
+        border-color: #007bff;
+        box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+    }
+    
+    .form-textarea {
+        min-height: 80px;
+        resize: vertical;
+    }
+    
+    .form-select {
+        padding: 10px 12px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 14px;
+        background: white;
+    }
+    
+    .form-checkbox {
+        display: flex;
+        align-items: center;
+        margin-top: 5px;
+    }
+    
+    .form-checkbox input {
+        margin-right: 8px;
+    }
+    
+    .datetime-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 15px;
+    }
+    
+    .button-group {
+        display: flex;
+        gap: 15px;
+        justify-content: center;
+        margin-top: 30px;
+    }
+    
+    .btn-primary {
+        background-color: #007bff;
+        color: white;
+        padding: 12px 30px;
+        border: none;
+        border-radius: 4px;
+        font-size: 16px;
+        cursor: pointer;
+        text-decoration: none;
+        transition: background-color 0.2s;
+    }
+    
+    .btn-primary:hover {
+        background-color: #0056b3;
+    }
+    
+    .btn-secondary {
+        background-color: #6c757d;
+        color: white;
+        padding: 12px 30px;
+        border: none;
+        border-radius: 4px;
+        font-size: 16px;
+        cursor: pointer;
+        text-decoration: none;
+        transition: background-color 0.2s;
+    }
+    
+    .btn-secondary:hover {
+        background-color: #545b62;
+        color: white;
+        text-decoration: none;
+    }
+    
+    .form-hint {
+        font-size: 12px;
+        color: #666;
+        margin-top: 5px;
+    }
+    
+    .online-fields {
+        display: none;
+        margin-top: 10px;
+        padding: 15px;
+        background: #f8f9fa;
+        border-radius: 4px;
+        border: 1px solid #ddd;
+    }
+    
+    .online-fields.show {
+        display: block;
+    }
+</style>
+
+<div class="form-container">
+    <h2 class="form-title">Add New Class Schedule Event</h2>
+    
+    <form method="POST">
+        {% csrf_token %}
+        
+        <div class="form-grid">
+            <!-- Title -->
+            <div class="form-group">
+                <label class="form-label required">Event Title:</label>
+                <input type="text" name="title" class="form-input" required 
+                       placeholder="e.g., Introduction to Programming" value="{{ request.POST.title }}">
+            </div>
+            
+            <!-- Course -->
+            <div class="form-group">
+                <label class="form-label required">Course:</label>
+                <select name="course" class="form-select" required>
+                    <option value="">Select Course</option>
+                    {% for course in courses %}
+                        <option value="{{ course.id }}" {% if request.POST.course == course.id|stringformat:"s" %}selected{% endif %}>
+                            {{ course.course_code }} - {{ course.course_name }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <!-- Class Type -->
+            <div class="form-group">
+                <label class="form-label required">Class Type:</label>
+                <select name="class_type" class="form-select" required>
+                    {% for value, display in class_types %}
+                        <option value="{{ value }}" {% if request.POST.class_type == value %}selected{% endif %}>
+                            {{ display }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <!-- Location -->
+            <div class="form-group">
+                <label class="form-label">Location:</label>
+                <input type="text" name="location" class="form-input" 
+                       placeholder="e.g., Room 101, Lab A" value="{{ request.POST.location }}">
+                <div class="form-hint">Leave empty if online or location TBD</div>
+            </div>
+        </div>
+        
+        <!-- Date and Time -->
+        <div class="form-group full-width">
+            <label class="form-label required">Date and Time:</label>
+            <div class="datetime-grid">
+                <div class="form-group">
+                    <label class="form-label">Start Date & Time:</label>
+                    <input type="datetime-local" name="start_datetime" class="form-input" required 
+                           value="{{ request.POST.start_datetime }}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">End Date & Time:</label>
+                    <input type="datetime-local" name="end_datetime" class="form-input" required 
+                           value="{{ request.POST.end_datetime }}">
+                </div>
+            </div>
+        </div>
+        
+        <!-- Online Session -->
+        <div class="form-group full-width">
+            <div class="form-checkbox">
+                <input type="checkbox" name="is_online" id="is_online" 
+                       {% if request.POST.is_online %}checked{% endif %} onchange="toggleOnlineFields()">
+                <label for="is_online">This is an online session</label>
+            </div>
+            
+            <div class="online-fields" id="online-fields">
+                <div class="form-group">
+                    <label class="form-label">Meeting URL:</label>
+                    <input type="url" name="meeting_url" class="form-input" 
+                           placeholder="https://zoom.us/j/..." value="{{ request.POST.meeting_url }}">
+                    <div class="form-hint">Link to online meeting (Zoom, Teams, etc.)</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Description -->
+        <div class="form-group full-width">
+            <label class="form-label">Description:</label>
+            <textarea name="description" class="form-input form-textarea" 
+                      placeholder="Additional details about this class session...">{{ request.POST.description }}</textarea>
+        </div>
+        
+        <!-- Additional Fields -->
+        <div class="form-grid">
+            <!-- Max Attendees -->
+            <div class="form-group">
+                <label class="form-label">Maximum Attendees:</label>
+                <input type="number" name="max_attendees" class="form-input" min="1" 
+                       placeholder="Optional" value="{{ request.POST.max_attendees }}">
+                <div class="form-hint">Leave empty for no limit</div>
+            </div>
+        </div>
+        
+        <!-- Required Materials -->
+        <div class="form-group full-width">
+            <label class="form-label">Required Materials:</label>
+            <textarea name="required_materials" class="form-input form-textarea" 
+                      placeholder="Materials students should bring (textbook, laptop, etc.)...">{{ request.POST.required_materials }}</textarea>
+        </div>
+        
+        <!-- Notes -->
+        <div class="form-group full-width">
+            <label class="form-label">Additional Notes:</label>
+            <textarea name="notes" class="form-input form-textarea" 
+                      placeholder="Any additional notes for students...">{{ request.POST.notes }}</textarea>
+        </div>
+        
+        <!-- Buttons -->
+        <div class="button-group">
+            <button type="submit" class="btn-primary">Create Event</button>
+            <a href="{% url 'manage_schedule' %}" class="btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+
+<script>
+function toggleOnlineFields() {
+    const checkbox = document.getElementById('is_online');
+    const onlineFields = document.getElementById('online-fields');
+    
+    if (checkbox.checked) {
+        onlineFields.classList.add('show');
+    } else {
+        onlineFields.classList.remove('show');
+    }
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    toggleOnlineFields();
+});
+</script>
+
+{% endblock %}

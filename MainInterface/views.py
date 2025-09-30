@@ -8,7 +8,7 @@ from django.http import JsonResponse, HttpResponse, Http404
 from django.utils import timezone
 from django.core.files.storage import default_storage
 from django.core.exceptions import ValidationError
-from .models import UserProfile, Course, Enrollment, Grade, Assignment, AssignmentSubmission
+from .models import UserProfile, Course, Enrollment, Grade, Assignment, AssignmentSubmission, StudyMaterial, AcademicCalendar, Announcement, ClassSchedule
 from reportlab.lib.pagesizes import letter, A4
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -195,6 +195,23 @@ def student_dashboard_view(request):
     else:
         current_gpa = 'N/A'
     
+    # Get recent announcements visible to the student
+    from datetime import timedelta
+    recent_announcements = []
+    all_announcements = Announcement.objects.filter(is_active=True).select_related('course', 'author')
+    
+    for announcement in all_announcements:
+        if announcement.is_visible_to_user(request.user):
+            recent_announcements.append(announcement)
+    
+    # Sort by priority and date, get the 3 most recent
+    def sort_key(announcement):
+        priority_order = {'urgent': 0, 'high': 1, 'medium': 2, 'low': 3}
+        return (priority_order.get(announcement.priority, 3), -announcement.created_at.timestamp())
+    
+    recent_announcements.sort(key=sort_key)
+    recent_announcements = recent_announcements[:3]
+    
     # Context data for the student dashboard
     context = {
         'user': request.user,
@@ -204,6 +221,7 @@ def student_dashboard_view(request):
         'pending_assignments_count': len(pending_assignments),
         'submitted_assignments_count': len(submitted_assignments),
         'overdue_assignments_count': len(overdue_assignments),
+        'recent_announcements': recent_announcements,
         'attendance_percentage': 85,  # Placeholder for attendance
     }
     
@@ -1237,6 +1255,280 @@ def study_materials_view(request):
     
     return render(request, 'MainInterface/study_materials.html', context)
 
+# Course Materials Management Views
+@login_required
+def upload_material_view(request):
+    """Upload new course material (lecturer only)"""
+    try:
+        if request.user.userprofile.user_type != 'lecturer':
+            messages.error(request, 'Access denied. Lecturer access required.')
+            return redirect('dashboard')
+    except UserProfile.DoesNotExist:
+        messages.error(request, 'User profile not found.')
+        return redirect('dashboard')
+    
+    # Get lecturer's courses
+    courses = Course.objects.filter(lecturer=request.user.userprofile, is_active=True)
+    
+    if request.method == 'POST':
+        title = request.POST.get('title', '').strip()
+        description = request.POST.get('description', '').strip()
+        material_type = request.POST.get('material_type', 'other')
+        course_id = request.POST.get('course')
+        uploaded_file = request.FILES.get('file')
+        
+        # Validation
+        if not all([title, course_id, uploaded_file]):
+            messages.error(request, 'Please fill in all required fields and select a file.')
+            return render(request, 'MainInterface/upload_material.html', {'courses': courses})
+        
+        # Validate course belongs to lecturer
+        try:
+            course = Course.objects.get(id=course_id, lecturer=request.user.userprofile)
+        except Course.DoesNotExist:
+            messages.error(request, 'Invalid course selected.')
+            return render(request, 'MainInterface/upload_material.html', {'courses': courses})
+        
+        # File size validation (max 50MB)
+        max_size = 50 * 1024 * 1024  # 50MB in bytes
+        if uploaded_file.size > max_size:
+            messages.error(request, 'File size must be less than 50MB.')
+            return render(request, 'MainInterface/upload_material.html', {'courses': courses})
+        
+        try:
+            # Create study material
+            material = StudyMaterial.objects.create(
+                title=title,
+                description=description,
+                material_type=material_type,
+                course=course,
+                uploaded_by=request.user,
+                file=uploaded_file,
+                file_size=uploaded_file.size
+            )
+            
+            messages.success(request, f'Material "{title}" has been uploaded successfully!')
+            return redirect('manage_materials')
+            
+        except Exception as e:
+            messages.error(request, f'An error occurred while uploading the material: {str(e)}')
+    
+    context = {
+        'courses': courses,
+        'material_types': StudyMaterial.MATERIAL_TYPE_CHOICES,
+    }
+    
+    return render(request, 'MainInterface/upload_material.html', context)
+
+@login_required
+def manage_materials_view(request):
+    """Manage uploaded materials (lecturer only)"""
+    try:
+        if request.user.userprofile.user_type != 'lecturer':
+            messages.error(request, 'Access denied. Lecturer access required.')
+            return redirect('dashboard')
+    except UserProfile.DoesNotExist:
+        messages.error(request, 'User profile not found.')
+        return redirect('dashboard')
+    
+    # Handle file download
+    if request.GET.get('download'):
+        material_id = request.GET.get('download')
+        try:
+            material = StudyMaterial.objects.get(id=material_id)
+            # Check if lecturer owns this material's course
+            if material.course.lecturer == request.user.userprofile:
+                material.increment_download_count()
+                response = HttpResponse(material.file.read(), content_type='application/octet-stream')
+                response['Content-Disposition'] = f'attachment; filename="{material.file.name.split("/")[-1]}"'
+                return response
+            else:
+                messages.error(request, "You don't have permission to download this file.")
+        except StudyMaterial.DoesNotExist:
+            messages.error(request, "File not found.")
+        return redirect('manage_materials')
+    
+    # Get lecturer's courses
+    courses = Course.objects.filter(lecturer=request.user.userprofile)
+    
+    # Get materials for lecturer's courses
+    materials = StudyMaterial.objects.filter(
+        course__in=courses
+    ).select_related('course').order_by('-created_at')
+    
+    # Apply filters
+    course_filter = request.GET.get('course', '')
+    material_type_filter = request.GET.get('type', '')
+    search_query = request.GET.get('search', '')
+    
+    if course_filter:
+        materials = materials.filter(course__id=course_filter)
+    
+    if material_type_filter:
+        materials = materials.filter(material_type=material_type_filter)
+    
+    if search_query:
+        materials = materials.filter(
+            Q(title__icontains=search_query) |
+            Q(description__icontains=search_query)
+        )
+    
+    # Group materials by course
+    materials_by_course = {}
+    for material in materials:
+        if material.course not in materials_by_course:
+            materials_by_course[material.course] = []
+        materials_by_course[material.course].append(material)
+    
+    # Calculate statistics
+    total_materials = materials.count()
+    total_downloads = sum(m.download_count for m in materials)
+    active_materials = materials.filter(is_active=True).count()
+    
+    context = {
+        'materials_by_course': materials_by_course,
+        'courses': courses,
+        'material_types': StudyMaterial.MATERIAL_TYPE_CHOICES,
+        'selected_course': course_filter,
+        'selected_type': material_type_filter,
+        'search_query': search_query,
+        'total_materials': total_materials,
+        'total_downloads': total_downloads,
+        'active_materials': active_materials,
+    }
+    
+    return render(request, 'MainInterface/manage_materials.html', context)
+
+@login_required
+def edit_material_view(request, material_id):
+    """Edit existing material (lecturer only)"""
+    try:
+        if request.user.userprofile.user_type != 'lecturer':
+            messages.error(request, 'Access denied. Lecturer access required.')
+            return redirect('dashboard')
+    except UserProfile.DoesNotExist:
+        messages.error(request, 'User profile not found.')
+        return redirect('dashboard')
+    
+    material = get_object_or_404(StudyMaterial, id=material_id)
+    
+    # Check if lecturer owns this material's course
+    if material.course.lecturer != request.user.userprofile:
+        messages.error(request, 'You do not have permission to edit this material.')
+        return redirect('manage_materials')
+    
+    # Handle file download
+    if request.GET.get('download'):
+        if material.file:
+            material.increment_download_count()
+            response = HttpResponse(material.file.read(), content_type='application/octet-stream')
+            response['Content-Disposition'] = f'attachment; filename="{material.file.name.split("/")[-1]}"'
+            return response
+        else:
+            messages.error(request, "No file attached to this material.")
+            return redirect('edit_material', material_id=material_id)
+    
+    # Get lecturer's courses
+    courses = Course.objects.filter(lecturer=request.user.userprofile, is_active=True)
+    
+    if request.method == 'POST':
+        title = request.POST.get('title', '').strip()
+        description = request.POST.get('description', '').strip()
+        material_type = request.POST.get('material_type', 'other')
+        course_id = request.POST.get('course')
+        is_active = request.POST.get('is_active') == 'on'
+        uploaded_file = request.FILES.get('file')
+        
+        # Validation
+        if not all([title, course_id]):
+            messages.error(request, 'Please fill in all required fields.')
+            return render(request, 'MainInterface/edit_material.html', {
+                'material': material, 'courses': courses
+            })
+        
+        # Validate course belongs to lecturer
+        try:
+            course = Course.objects.get(id=course_id, lecturer=request.user.userprofile)
+        except Course.DoesNotExist:
+            messages.error(request, 'Invalid course selected.')
+            return render(request, 'MainInterface/edit_material.html', {
+                'material': material, 'courses': courses
+            })
+        
+        try:
+            # Update material
+            material.title = title
+            material.description = description
+            material.material_type = material_type
+            material.course = course
+            material.is_active = is_active
+            
+            # Handle file replacement
+            if uploaded_file:
+                # File size validation (max 50MB)
+                max_size = 50 * 1024 * 1024  # 50MB in bytes
+                if uploaded_file.size > max_size:
+                    messages.error(request, 'File size must be less than 50MB.')
+                    return render(request, 'MainInterface/edit_material.html', {
+                        'material': material, 'courses': courses
+                    })
+                
+                material.file = uploaded_file
+                material.file_size = uploaded_file.size
+            
+            material.save()
+            
+            messages.success(request, f'Material "{title}" has been updated successfully!')
+            return redirect('manage_materials')
+            
+        except Exception as e:
+            messages.error(request, f'An error occurred while updating the material: {str(e)}')
+    
+    context = {
+        'material': material,
+        'courses': courses,
+        'material_types': StudyMaterial.MATERIAL_TYPE_CHOICES,
+    }
+    
+    return render(request, 'MainInterface/edit_material.html', context)
+
+@login_required
+def delete_material_view(request, material_id):
+    """Delete material (lecturer only)"""
+    try:
+        if request.user.userprofile.user_type != 'lecturer':
+            messages.error(request, 'Access denied. Lecturer access required.')
+            return redirect('dashboard')
+    except UserProfile.DoesNotExist:
+        messages.error(request, 'User profile not found.')
+        return redirect('dashboard')
+    
+    material = get_object_or_404(StudyMaterial, id=material_id)
+    
+    # Check if lecturer owns this material's course
+    if material.course.lecturer != request.user.userprofile:
+        messages.error(request, 'You do not have permission to delete this material.')
+        return redirect('manage_materials')
+    
+    if request.method == 'POST':
+        material_title = material.title
+        # Delete the file from filesystem
+        if material.file:
+            try:
+                material.file.delete()
+            except:
+                pass  # Continue even if file deletion fails
+        
+        material.delete()
+        messages.success(request, f'Material "{material_title}" has been deleted successfully!')
+        return redirect('manage_materials')
+    
+    context = {
+        'material': material,
+    }
+    
+    return render(request, 'MainInterface/delete_material_confirm.html', context)
+
 # Assignment Views
 @login_required
 def assignments_view(request):
@@ -1492,6 +1784,96 @@ def lecturer_assignments_view(request):
     }
     
     return render(request, 'MainInterface/lecturer_assignments.html', context)
+
+@login_required
+def create_assignment_view(request):
+    """Create a new assignment (lecturer only)"""
+    try:
+        if request.user.userprofile.user_type != 'lecturer':
+            messages.error(request, 'Access denied. Lecturer access required.')
+            return redirect('dashboard')
+    except UserProfile.DoesNotExist:
+        messages.error(request, 'User profile not found.')
+        return redirect('dashboard')
+    
+    # Get lecturer's courses
+    courses = Course.objects.filter(lecturer=request.user.userprofile, is_active=True)
+    
+    if request.method == 'POST':
+        title = request.POST.get('title', '').strip()
+        description = request.POST.get('description', '').strip()
+        course_id = request.POST.get('course')
+        due_date = request.POST.get('due_date', '').strip()
+        max_points = request.POST.get('max_points', '100')
+        status = request.POST.get('status', 'draft')
+        instructions = request.POST.get('instructions', '').strip()
+        allowed_file_types = request.POST.get('allowed_file_types', 'pdf,doc,docx,txt').strip()
+        max_file_size = request.POST.get('max_file_size', '10485760')
+        late_submission_allowed = request.POST.get('late_submission_allowed') == 'on'
+        late_penalty_per_day = request.POST.get('late_penalty_per_day', '10.0')
+        
+        # Validation
+        if not all([title, description, course_id, due_date]):
+            messages.error(request, 'Please fill in all required fields.')
+            return render(request, 'MainInterface/create_assignment.html', {'courses': courses})
+        
+        # Validate course belongs to lecturer
+        try:
+            course = Course.objects.get(id=course_id, lecturer=request.user.userprofile)
+        except Course.DoesNotExist:
+            messages.error(request, 'Invalid course selected.')
+            return render(request, 'MainInterface/create_assignment.html', {'courses': courses})
+        
+        # Parse due date
+        try:
+            from django.utils.dateparse import parse_datetime
+            from django.utils import timezone as django_timezone
+            from datetime import datetime
+            
+            # Parse the datetime string and make it timezone aware
+            due_date_obj = datetime.strptime(due_date, '%Y-%m-%dT%H:%M')
+            due_date_obj = django_timezone.make_aware(due_date_obj)
+        except ValueError:
+            messages.error(request, 'Invalid due date format.')
+            return render(request, 'MainInterface/create_assignment.html', {'courses': courses})
+        
+        # Validate numeric fields
+        try:
+            max_points = float(max_points)
+            max_file_size = int(max_file_size)
+            late_penalty_per_day = float(late_penalty_per_day)
+        except ValueError:
+            messages.error(request, 'Invalid numeric values.')
+            return render(request, 'MainInterface/create_assignment.html', {'courses': courses})
+        
+        try:
+            # Create assignment
+            assignment = Assignment.objects.create(
+                title=title,
+                description=description,
+                course=course,
+                created_by=request.user,
+                due_date=due_date_obj,
+                max_points=max_points,
+                status=status,
+                instructions=instructions,
+                allowed_file_types=allowed_file_types,
+                max_file_size=max_file_size,
+                late_submission_allowed=late_submission_allowed,
+                late_penalty_per_day=late_penalty_per_day
+            )
+            
+            messages.success(request, f'Assignment "{title}" has been created successfully!')
+            return redirect('lecturer_assignments')
+            
+        except Exception as e:
+            messages.error(request, f'An error occurred while creating the assignment: {str(e)}')
+    
+    context = {
+        'courses': courses,
+    }
+    
+    return render(request, 'MainInterface/create_assignment.html', context)
 
 @login_required
 def assignment_submissions_view(request, assignment_id):
@@ -2381,3 +2763,1079 @@ def reject_enrollment_view(request, enrollment_id):
             return JsonResponse({'success': False, 'error': str(e)})
     
     return JsonResponse({'success': False, 'error': 'Invalid request method'})
+# Class Schedule Views
+@login_required
+def view_schedule_view(request):
+    """View class schedule for both students and lecturers"""
+    import calendar
+    from datetime import datetime, timedelta
+    
+    # Get current date
+    today = timezone.now().date()
+    current_year = today.year
+    current_month = today.month
+    
+    # Get year and month from query parameters
+    year = int(request.GET.get('year', current_year))
+    month = int(request.GET.get('month', current_month))
+    
+    # Initialize schedules variable
+    schedules = ClassSchedule.objects.none()
+    
+    # Get schedules based on user type
+    if hasattr(request.user, 'userprofile'):
+        if request.user.userprofile.user_type == 'student':
+            # Get schedules for courses the student is enrolled in
+            enrolled_courses = Course.objects.filter(
+                enrollments__student=request.user,
+                enrollments__status='enrolled'
+            )
+            schedules = ClassSchedule.objects.filter(
+                course__in=enrolled_courses,
+                is_active=True,
+                start_datetime__year=year,
+                start_datetime__month=month
+            ).select_related('course', 'lecturer').order_by('start_datetime')
+            
+        elif request.user.userprofile.user_type == 'lecturer':
+            # Get schedules for courses the lecturer teaches
+            lecturer_courses = Course.objects.filter(lecturer=request.user.userprofile)
+            schedules = ClassSchedule.objects.filter(
+                course__in=lecturer_courses,
+                start_datetime__year=year,
+                start_datetime__month=month
+            ).select_related('course').order_by('start_datetime')
+    
+    # Create calendar
+    cal = calendar.monthcalendar(year, month)
+    month_name = calendar.month_name[month]
+    
+    # Navigation dates
+    if month == 1:
+        prev_month, prev_year = 12, year - 1
+    else:
+        prev_month, prev_year = month - 1, year
+    
+    if month == 12:
+        next_month, next_year = 1, year + 1
+    else:
+        next_month, next_year = month + 1, year
+    
+    # Organize schedules by date for easy template access
+    schedules_by_date = {}
+    for schedule in schedules:
+        schedule_date = schedule.start_datetime.date()
+        if schedule_date.day not in schedules_by_date:
+            schedules_by_date[schedule_date.day] = []
+        schedules_by_date[schedule_date.day].append(schedule)
+    
+    # Get upcoming schedules (next 7 days)
+    upcoming_schedules = ClassSchedule.objects.filter(
+        start_datetime__gte=timezone.now(),
+        start_datetime__lte=timezone.now() + timedelta(days=7),
+        is_active=True
+    )
+    
+    # Filter based on user type
+    if hasattr(request.user, 'userprofile'):
+        if request.user.userprofile.user_type == 'student':
+            enrolled_courses = Course.objects.filter(
+                enrollments__student=request.user,
+                enrollments__status='enrolled'
+            )
+            upcoming_schedules = upcoming_schedules.filter(course__in=enrolled_courses)
+        elif request.user.userprofile.user_type == 'lecturer':
+            lecturer_courses = Course.objects.filter(lecturer=request.user.userprofile)
+            upcoming_schedules = upcoming_schedules.filter(course__in=lecturer_courses)
+    
+    upcoming_schedules = upcoming_schedules.select_related('course', 'lecturer').order_by('start_datetime')[:5]
+    
+    context = {
+        'calendar': cal,
+        'year': year,
+        'month': month,
+        'month_name': month_name,
+        'today': today,
+        'prev_month': prev_month,
+        'prev_year': prev_year,
+        'next_month': next_month,
+        'next_year': next_year,
+        'schedules_by_date': schedules_by_date,
+        'upcoming_schedules': upcoming_schedules,
+        'all_schedules': schedules,
+    }
+    
+    return render(request, 'MainInterface/view_schedule.html', context)
+
+@login_required
+def manage_schedule_view(request):
+    """Manage class schedules (lecturer only)"""
+    try:
+        if request.user.userprofile.user_type != 'lecturer':
+            messages.error(request, 'Access denied. Lecturer access required.')
+            return redirect('dashboard')
+    except UserProfile.DoesNotExist:
+        messages.error(request, 'User profile not found.')
+        return redirect('dashboard')
+    
+    # Get lecturer's courses
+    courses = Course.objects.filter(lecturer=request.user.userprofile, is_active=True)
+    
+    # Get lecturer's schedules
+    schedules = ClassSchedule.objects.filter(
+        lecturer=request.user.userprofile
+    ).select_related('course').order_by('-start_datetime')
+    
+    # Apply filters
+    course_filter = request.GET.get('course', '')
+    status_filter = request.GET.get('status', '')
+    
+    if course_filter:
+        schedules = schedules.filter(course__id=course_filter)
+    
+    if status_filter:
+        if status_filter == 'active':
+            schedules = schedules.filter(is_active=True, is_cancelled=False)
+        elif status_filter == 'cancelled':
+            schedules = schedules.filter(is_cancelled=True)
+        elif status_filter == 'past':
+            schedules = schedules.filter(end_datetime__lt=timezone.now())
+        elif status_filter == 'upcoming':
+            schedules = schedules.filter(start_datetime__gte=timezone.now(), is_active=True, is_cancelled=False)
+    
+    # Calculate statistics
+    total_schedules = ClassSchedule.objects.filter(lecturer=request.user.userprofile).count()
+    upcoming_schedules = ClassSchedule.objects.filter(
+        lecturer=request.user.userprofile,
+        start_datetime__gte=timezone.now(),
+        is_active=True,
+        is_cancelled=False
+    ).count()
+    cancelled_schedules = ClassSchedule.objects.filter(
+        lecturer=request.user.userprofile,
+        is_cancelled=True
+    ).count()
+    
+    context = {
+        'schedules': schedules,
+        'courses': courses,
+        'selected_course': course_filter,
+        'selected_status': status_filter,
+        'total_schedules': total_schedules,
+        'upcoming_schedules': upcoming_schedules,
+        'cancelled_schedules': cancelled_schedules,
+    }
+    
+    return render(request, 'MainInterface/manage_schedule.html', context)
+
+@login_required
+def add_schedule_event_view(request):
+    """Add a new class schedule event (lecturer only)"""
+    try:
+        if request.user.userprofile.user_type != 'lecturer':
+            messages.error(request, 'Access denied. Lecturer access required.')
+            return redirect('dashboard')
+    except UserProfile.DoesNotExist:
+        messages.error(request, 'User profile not found.')
+        return redirect('dashboard')
+    
+    # Get lecturer's courses
+    courses = Course.objects.filter(lecturer=request.user.userprofile, is_active=True)
+    
+    if request.method == 'POST':
+        title = request.POST.get('title', '').strip()
+        description = request.POST.get('description', '').strip()
+        course_id = request.POST.get('course')
+        class_type = request.POST.get('class_type', 'lecture')
+        start_datetime = request.POST.get('start_datetime', '').strip()
+        end_datetime = request.POST.get('end_datetime', '').strip()
+        location = request.POST.get('location', '').strip()
+        is_online = request.POST.get('is_online') == 'on'
+        meeting_url = request.POST.get('meeting_url', '').strip()
+        max_attendees = request.POST.get('max_attendees', '').strip()
+        required_materials = request.POST.get('required_materials', '').strip()
+        notes = request.POST.get('notes', '').strip()
+        
+        # Validation
+        if not all([title, course_id, start_datetime, end_datetime]):
+            messages.error(request, 'Please fill in all required fields.')
+            return render(request, 'MainInterface/add_schedule_event.html', {
+                'courses': courses,
+                'class_types': ClassSchedule.CLASS_TYPE_CHOICES
+            })
+        
+        # Validate course belongs to lecturer
+        try:
+            course = Course.objects.get(id=course_id, lecturer=request.user.userprofile)
+        except Course.DoesNotExist:
+            messages.error(request, 'Invalid course selected.')
+            return render(request, 'MainInterface/add_schedule_event.html', {
+                'courses': courses,
+                'class_types': ClassSchedule.CLASS_TYPE_CHOICES
+            })
+        
+        # Parse datetime strings
+        try:
+            from django.utils.dateparse import parse_datetime
+            from django.utils import timezone as django_timezone
+            from datetime import datetime
+            
+            start_dt = datetime.strptime(start_datetime, '%Y-%m-%dT%H:%M')
+            start_dt = django_timezone.make_aware(start_dt)
+            
+            end_dt = datetime.strptime(end_datetime, '%Y-%m-%dT%H:%M')
+            end_dt = django_timezone.make_aware(end_dt)
+            
+            if end_dt <= start_dt:
+                messages.error(request, 'End time must be after start time.')
+                return render(request, 'MainInterface/add_schedule_event.html', {
+                    'courses': courses,
+                    'class_types': ClassSchedule.CLASS_TYPE_CHOICES
+                })
+        except ValueError:
+            messages.error(request, 'Invalid datetime format.')
+            return render(request, 'MainInterface/add_schedule_event.html', {
+                'courses': courses,
+                'class_types': ClassSchedule.CLASS_TYPE_CHOICES
+            })
+        
+        # Validate max_attendees
+        if max_attendees:
+            try:
+                max_attendees = int(max_attendees)
+            except ValueError:
+                messages.error(request, 'Maximum attendees must be a number.')
+                return render(request, 'MainInterface/add_schedule_event.html', {
+                    'courses': courses,
+                    'class_types': ClassSchedule.CLASS_TYPE_CHOICES
+                })
+        else:
+            max_attendees = None
+        
+        try:
+            # Create schedule
+            schedule = ClassSchedule.objects.create(
+                title=title,
+                description=description,
+                course=course,
+                lecturer=request.user.userprofile,
+                class_type=class_type,
+                start_datetime=start_dt,
+                end_datetime=end_dt,
+                location=location,
+                is_online=is_online,
+                meeting_url=meeting_url,
+                max_attendees=max_attendees,
+                required_materials=required_materials,
+                notes=notes
+            )
+            
+            messages.success(request, f'Class schedule "{title}" has been created successfully!')
+            return redirect('manage_schedule')
+            
+        except Exception as e:
+            messages.error(request, f'An error occurred while creating the schedule: {str(e)}')
+    
+    context = {
+        'courses': courses,
+        'class_types': ClassSchedule.CLASS_TYPE_CHOICES,
+    }
+    
+    return render(request, 'MainInterface/add_schedule_event.html', context)
+
+@login_required
+def edit_schedule_event_view(request, schedule_id):
+    """Edit a class schedule event (lecturer only)"""
+    try:
+        if request.user.userprofile.user_type != 'lecturer':
+            messages.error(request, 'Access denied. Lecturer access required.')
+            return redirect('dashboard')
+    except UserProfile.DoesNotExist:
+        messages.error(request, 'User profile not found.')
+        return redirect('dashboard')
+    
+    schedule = get_object_or_404(ClassSchedule, id=schedule_id, lecturer=request.user.userprofile)
+    
+    # Get lecturer's courses
+    courses = Course.objects.filter(lecturer=request.user.userprofile, is_active=True)
+    
+    if request.method == 'POST':
+        title = request.POST.get('title', '').strip()
+        description = request.POST.get('description', '').strip()
+        course_id = request.POST.get('course')
+        class_type = request.POST.get('class_type', 'lecture')
+        start_datetime = request.POST.get('start_datetime', '').strip()
+        end_datetime = request.POST.get('end_datetime', '').strip()
+        location = request.POST.get('location', '').strip()
+        is_online = request.POST.get('is_online') == 'on'
+        meeting_url = request.POST.get('meeting_url', '').strip()
+        max_attendees = request.POST.get('max_attendees', '').strip()
+        required_materials = request.POST.get('required_materials', '').strip()
+        notes = request.POST.get('notes', '').strip()
+        is_active = request.POST.get('is_active') == 'on'
+        is_cancelled = request.POST.get('is_cancelled') == 'on'
+        cancellation_reason = request.POST.get('cancellation_reason', '').strip()
+        
+        # Validation
+        if not all([title, course_id, start_datetime, end_datetime]):
+            messages.error(request, 'Please fill in all required fields.')
+            return render(request, 'MainInterface/edit_schedule_event.html', {
+                'schedule': schedule,
+                'courses': courses,
+                'class_types': ClassSchedule.CLASS_TYPE_CHOICES
+            })
+        
+        # Validate course belongs to lecturer
+        try:
+            course = Course.objects.get(id=course_id, lecturer=request.user.userprofile)
+        except Course.DoesNotExist:
+            messages.error(request, 'Invalid course selected.')
+            return render(request, 'MainInterface/edit_schedule_event.html', {
+                'schedule': schedule,
+                'courses': courses,
+                'class_types': ClassSchedule.CLASS_TYPE_CHOICES
+            })
+        
+        # Parse datetime strings
+        try:
+            from django.utils.dateparse import parse_datetime
+            from django.utils import timezone as django_timezone
+            from datetime import datetime
+            
+            start_dt = datetime.strptime(start_datetime, '%Y-%m-%dT%H:%M')
+            start_dt = django_timezone.make_aware(start_dt)
+            
+            end_dt = datetime.strptime(end_datetime, '%Y-%m-%dT%H:%M')
+            end_dt = django_timezone.make_aware(end_dt)
+            
+            if end_dt <= start_dt:
+                messages.error(request, 'End time must be after start time.')
+                return render(request, 'MainInterface/edit_schedule_event.html', {
+                    'schedule': schedule,
+                    'courses': courses,
+                    'class_types': ClassSchedule.CLASS_TYPE_CHOICES
+                })
+        except ValueError:
+            messages.error(request, 'Invalid datetime format.')
+            return render(request, 'MainInterface/edit_schedule_event.html', {
+                'schedule': schedule,
+                'courses': courses,
+                'class_types': ClassSchedule.CLASS_TYPE_CHOICES
+            })
+        
+        # Validate max_attendees
+        if max_attendees:
+            try:
+                max_attendees = int(max_attendees)
+            except ValueError:
+                messages.error(request, 'Maximum attendees must be a number.')
+                return render(request, 'MainInterface/edit_schedule_event.html', {
+                    'schedule': schedule,
+                    'courses': courses,
+                    'class_types': ClassSchedule.CLASS_TYPE_CHOICES
+                })
+        else:
+            max_attendees = None
+        
+        try:
+            # Update schedule
+            schedule.title = title
+            schedule.description = description
+            schedule.course = course
+            schedule.class_type = class_type
+            schedule.start_datetime = start_dt
+            schedule.end_datetime = end_dt
+            schedule.location = location
+            schedule.is_online = is_online
+            schedule.meeting_url = meeting_url
+            schedule.max_attendees = max_attendees
+            schedule.required_materials = required_materials
+            schedule.notes = notes
+            schedule.is_active = is_active
+            schedule.is_cancelled = is_cancelled
+            schedule.cancellation_reason = cancellation_reason
+            schedule.save()
+            
+            messages.success(request, f'Class schedule "{title}" has been updated successfully!')
+            return redirect('manage_schedule')
+            
+        except Exception as e:
+            messages.error(request, f'An error occurred while updating the schedule: {str(e)}')
+    
+    context = {
+        'schedule': schedule,
+        'courses': courses,
+        'class_types': ClassSchedule.CLASS_TYPE_CHOICES,
+    }
+    
+    return render(request, 'MainInterface/edit_schedule_event.html', context)
+
+@login_required
+def delete_schedule_event_view(request, schedule_id):
+    """Delete a class schedule event (lecturer only)"""
+    try:
+        if request.user.userprofile.user_type != 'lecturer':
+            messages.error(request, 'Access denied. Lecturer access required.')
+            return redirect('dashboard')
+    except UserProfile.DoesNotExist:
+        messages.error(request, 'User profile not found.')
+        return redirect('dashboard')
+    
+    schedule = get_object_or_404(ClassSchedule, id=schedule_id, lecturer=request.user.userprofile)
+    
+    if request.method == 'POST':
+        schedule_title = schedule.title
+        schedule.delete()
+        messages.success(request, f'Class schedule "{schedule_title}" has been deleted successfully!')
+        return redirect('manage_schedule')
+    
+    context = {
+        'schedule': schedule,
+    }
+    
+    return render(request, 'MainInterface/delete_schedule_confirm.html', context)
+# Announcement Management Views
+@login_required
+def manage_announcements_view(request):
+    """Manage announcements (lecturer and admin only)"""
+    try:
+        if request.user.userprofile.user_type not in ['lecturer', 'admin']:
+            messages.error(request, 'Access denied. Lecturer or admin access required.')
+            return redirect('dashboard')
+    except UserProfile.DoesNotExist:
+        messages.error(request, 'User profile not found.')
+        return redirect('dashboard')
+    
+    # Get announcements created by the current user or all if admin
+    if request.user.userprofile.user_type == 'admin':
+        announcements = Announcement.objects.all().select_related('author', 'course').order_by('-created_at')
+    else:
+        announcements = Announcement.objects.filter(author=request.user).select_related('course').order_by('-created_at')
+    
+    # Apply filters
+    status_filter = request.GET.get('status', '')
+    priority_filter = request.GET.get('priority', '')
+    audience_filter = request.GET.get('audience', '')
+    
+    if status_filter:
+        if status_filter == 'active':
+            announcements = announcements.filter(is_active=True)
+        elif status_filter == 'inactive':
+            announcements = announcements.filter(is_active=False)
+        elif status_filter == 'pinned':
+            announcements = announcements.filter(is_pinned=True)
+        elif status_filter == 'expired':
+            announcements = announcements.filter(expires_at__lt=timezone.now())
+    
+    if priority_filter:
+        announcements = announcements.filter(priority=priority_filter)
+    
+    if audience_filter:
+        announcements = announcements.filter(audience=audience_filter)
+    
+    # Calculate statistics
+    total_announcements = Announcement.objects.filter(author=request.user).count() if request.user.userprofile.user_type != 'admin' else Announcement.objects.count()
+    active_announcements = announcements.filter(is_active=True).count()
+    pinned_announcements = announcements.filter(is_pinned=True).count()
+    expired_announcements = announcements.filter(expires_at__lt=timezone.now()).count()
+    
+    context = {
+        'announcements': announcements,
+        'total_announcements': total_announcements,
+        'active_announcements': active_announcements,
+        'pinned_announcements': pinned_announcements,
+        'expired_announcements': expired_announcements,
+        'selected_status': status_filter,
+        'selected_priority': priority_filter,
+        'selected_audience': audience_filter,
+        'priority_choices': Announcement.PRIORITY_CHOICES,
+        'audience_choices': Announcement.AUDIENCE_CHOICES,
+    }
+    
+    return render(request, 'MainInterface/manage_announcements.html', context)
+
+@login_required
+def create_announcement_view(request):
+    """Create a new announcement (lecturer and admin only)"""
+    try:
+        if request.user.userprofile.user_type not in ['lecturer', 'admin']:
+            messages.error(request, 'Access denied. Lecturer or admin access required.')
+            return redirect('dashboard')
+    except UserProfile.DoesNotExist:
+        messages.error(request, 'User profile not found.')
+        return redirect('dashboard')
+    
+    # Get lecturer's courses for course-specific announcements
+    user_courses = []
+    if request.user.userprofile.user_type == 'lecturer':
+        user_courses = Course.objects.filter(lecturer=request.user.userprofile, is_active=True)
+    elif request.user.userprofile.user_type == 'admin':
+        user_courses = Course.objects.filter(is_active=True)
+    
+    if request.method == 'POST':
+        title = request.POST.get('title', '').strip()
+        content = request.POST.get('content', '').strip()
+        priority = request.POST.get('priority', 'medium')
+        audience = request.POST.get('audience', 'all')
+        course_id = request.POST.get('course', '').strip()
+        is_pinned = request.POST.get('is_pinned') == 'on'
+        expires_at = request.POST.get('expires_at', '').strip()
+        
+        # Validation
+        if not all([title, content]):
+            messages.error(request, 'Please fill in all required fields.')
+            return render(request, 'MainInterface/create_announcement.html', {
+                'user_courses': user_courses,
+                'priority_choices': Announcement.PRIORITY_CHOICES,
+                'audience_choices': Announcement.AUDIENCE_CHOICES,
+            })
+        
+        # Validate course selection for course-specific announcements
+        course = None
+        if audience == 'course_specific':
+            if not course_id:
+                messages.error(request, 'Please select a course for course-specific announcements.')
+                return render(request, 'MainInterface/create_announcement.html', {
+                    'user_courses': user_courses,
+                    'priority_choices': Announcement.PRIORITY_CHOICES,
+                    'audience_choices': Announcement.AUDIENCE_CHOICES,
+                })
+            try:
+                if request.user.userprofile.user_type == 'lecturer':
+                    course = Course.objects.get(id=course_id, lecturer=request.user.userprofile)
+                else:
+                    course = Course.objects.get(id=course_id)
+            except Course.DoesNotExist:
+                messages.error(request, 'Invalid course selected.')
+                return render(request, 'MainInterface/create_announcement.html', {
+                    'user_courses': user_courses,
+                    'priority_choices': Announcement.PRIORITY_CHOICES,
+                    'audience_choices': Announcement.AUDIENCE_CHOICES,
+                })
+        
+        # Parse expiration date
+        expires_at_obj = None
+        if expires_at:
+            try:
+                from django.utils.dateparse import parse_datetime
+                from django.utils import timezone as django_timezone
+                from datetime import datetime
+                
+                expires_at_obj = datetime.strptime(expires_at, '%Y-%m-%dT%H:%M')
+                expires_at_obj = django_timezone.make_aware(expires_at_obj)
+                
+                if expires_at_obj <= timezone.now():
+                    messages.error(request, 'Expiration date must be in the future.')
+                    return render(request, 'MainInterface/create_announcement.html', {
+                        'user_courses': user_courses,
+                        'priority_choices': Announcement.PRIORITY_CHOICES,
+                        'audience_choices': Announcement.AUDIENCE_CHOICES,
+                    })
+            except ValueError:
+                messages.error(request, 'Invalid expiration date format.')
+                return render(request, 'MainInterface/create_announcement.html', {
+                    'user_courses': user_courses,
+                    'priority_choices': Announcement.PRIORITY_CHOICES,
+                    'audience_choices': Announcement.AUDIENCE_CHOICES,
+                })
+        
+        try:
+            # Create announcement
+            announcement = Announcement.objects.create(
+                title=title,
+                content=content,
+                author=request.user,
+                priority=priority,
+                audience=audience,
+                course=course,
+                is_pinned=is_pinned,
+                expires_at=expires_at_obj
+            )
+            
+            messages.success(request, f'Announcement "{title}" has been created successfully!')
+            return redirect('manage_announcements')
+            
+        except Exception as e:
+            messages.error(request, f'An error occurred while creating the announcement: {str(e)}')
+    
+    context = {
+        'user_courses': user_courses,
+        'priority_choices': Announcement.PRIORITY_CHOICES,
+        'audience_choices': Announcement.AUDIENCE_CHOICES,
+    }
+    
+    return render(request, 'MainInterface/create_announcement.html', context)
+
+@login_required
+def edit_announcement_view(request, announcement_id):
+    """Edit an existing announcement"""
+    try:
+        if request.user.userprofile.user_type not in ['lecturer', 'admin']:
+            messages.error(request, 'Access denied. Lecturer or admin access required.')
+            return redirect('dashboard')
+    except UserProfile.DoesNotExist:
+        messages.error(request, 'User profile not found.')
+        return redirect('dashboard')
+    
+    # Get announcement (must be created by current user unless admin)
+    if request.user.userprofile.user_type == 'admin':
+        announcement = get_object_or_404(Announcement, id=announcement_id)
+    else:
+        announcement = get_object_or_404(Announcement, id=announcement_id, author=request.user)
+    
+    # Get lecturer's courses for course-specific announcements
+    user_courses = []
+    if request.user.userprofile.user_type == 'lecturer':
+        user_courses = Course.objects.filter(lecturer=request.user.userprofile, is_active=True)
+    elif request.user.userprofile.user_type == 'admin':
+        user_courses = Course.objects.filter(is_active=True)
+    
+    if request.method == 'POST':
+        title = request.POST.get('title', '').strip()
+        content = request.POST.get('content', '').strip()
+        priority = request.POST.get('priority', 'medium')
+        audience = request.POST.get('audience', 'all')
+        course_id = request.POST.get('course', '').strip()
+        is_active = request.POST.get('is_active') == 'on'
+        is_pinned = request.POST.get('is_pinned') == 'on'
+        expires_at = request.POST.get('expires_at', '').strip()
+        
+        # Validation
+        if not all([title, content]):
+            messages.error(request, 'Please fill in all required fields.')
+            return render(request, 'MainInterface/edit_announcement.html', {
+                'announcement': announcement,
+                'user_courses': user_courses,
+                'priority_choices': Announcement.PRIORITY_CHOICES,
+                'audience_choices': Announcement.AUDIENCE_CHOICES,
+            })
+        
+        # Validate course selection for course-specific announcements
+        course = None
+        if audience == 'course_specific':
+            if not course_id:
+                messages.error(request, 'Please select a course for course-specific announcements.')
+                return render(request, 'MainInterface/edit_announcement.html', {
+                    'announcement': announcement,
+                    'user_courses': user_courses,
+                    'priority_choices': Announcement.PRIORITY_CHOICES,
+                    'audience_choices': Announcement.AUDIENCE_CHOICES,
+                })
+            try:
+                if request.user.userprofile.user_type == 'lecturer':
+                    course = Course.objects.get(id=course_id, lecturer=request.user.userprofile)
+                else:
+                    course = Course.objects.get(id=course_id)
+            except Course.DoesNotExist:
+                messages.error(request, 'Invalid course selected.')
+                return render(request, 'MainInterface/edit_announcement.html', {
+                    'announcement': announcement,
+                    'user_courses': user_courses,
+                    'priority_choices': Announcement.PRIORITY_CHOICES,
+                    'audience_choices': Announcement.AUDIENCE_CHOICES,
+                })
+        
+        # Parse expiration date
+        expires_at_obj = None
+        if expires_at:
+            try:
+                from django.utils.dateparse import parse_datetime
+                from django.utils import timezone as django_timezone
+                from datetime import datetime
+                
+                expires_at_obj = datetime.strptime(expires_at, '%Y-%m-%dT%H:%M')
+                expires_at_obj = django_timezone.make_aware(expires_at_obj)
+            except ValueError:
+                messages.error(request, 'Invalid expiration date format.')
+                return render(request, 'MainInterface/edit_announcement.html', {
+                    'announcement': announcement,
+                    'user_courses': user_courses,
+                    'priority_choices': Announcement.PRIORITY_CHOICES,
+                    'audience_choices': Announcement.AUDIENCE_CHOICES,
+                })
+        
+        try:
+            # Update announcement
+            announcement.title = title
+            announcement.content = content
+            announcement.priority = priority
+            announcement.audience = audience
+            announcement.course = course
+            announcement.is_active = is_active
+            announcement.is_pinned = is_pinned
+            announcement.expires_at = expires_at_obj
+            announcement.save()
+            
+            messages.success(request, f'Announcement "{title}" has been updated successfully!')
+            return redirect('manage_announcements')
+            
+        except Exception as e:
+            messages.error(request, f'An error occurred while updating the announcement: {str(e)}')
+    
+    context = {
+        'announcement': announcement,
+        'user_courses': user_courses,
+        'priority_choices': Announcement.PRIORITY_CHOICES,
+        'audience_choices': Announcement.AUDIENCE_CHOICES,
+    }
+    
+    return render(request, 'MainInterface/edit_announcement.html', context)
+
+@login_required
+def delete_announcement_view(request, announcement_id):
+    """Delete an announcement"""
+    try:
+        if request.user.userprofile.user_type not in ['lecturer', 'admin']:
+            messages.error(request, 'Access denied. Lecturer or admin access required.')
+            return redirect('dashboard')
+    except UserProfile.DoesNotExist:
+        messages.error(request, 'User profile not found.')
+        return redirect('dashboard')
+    
+    # Get announcement (must be created by current user unless admin)
+    if request.user.userprofile.user_type == 'admin':
+        announcement = get_object_or_404(Announcement, id=announcement_id)
+    else:
+        announcement = get_object_or_404(Announcement, id=announcement_id, author=request.user)
+    
+    if request.method == 'POST':
+        announcement_title = announcement.title
+        announcement.delete()
+        messages.success(request, f'Announcement "{announcement_title}" has been deleted successfully!')
+        return redirect('manage_announcements')
+    
+    context = {
+        'announcement': announcement,
+    }
+    
+    return render(request, 'MainInterface/delete_announcement_confirm.html', context)
+
+
+# Academic Reports Views
+@login_required
+def academic_reports_view(request):
+    """
+    Academic reports page - allows lecturers to select students and generate reports
+    """
+    user_profile = request.user.userprofile
+    
+    # Only allow lecturers and admins
+    if user_profile.user_type not in ['lecturer', 'admin']:
+        messages.error(request, 'Access denied. Only lecturers can access academic reports.')
+        return redirect('dashboard')
+    
+    # Get all courses taught by this lecturer (or all if admin)
+    if user_profile.user_type == 'admin':
+        courses = Course.objects.filter(is_active=True).order_by('course_name')
+    else:
+        courses = Course.objects.filter(lecturer=user_profile, is_active=True).order_by('course_name')
+    
+    # Get students if a course is selected
+    selected_course_id = request.GET.get('course_id')
+    students = None
+    selected_course = None
+    
+    if selected_course_id:
+        try:
+            if user_profile.user_type == 'admin':
+                selected_course = Course.objects.get(id=selected_course_id, is_active=True)
+            else:
+                selected_course = Course.objects.get(id=selected_course_id, lecturer=user_profile, is_active=True)
+            
+            # Get enrolled students
+            enrollments = Enrollment.objects.filter(course=selected_course).select_related('student__userprofile')
+            students = [enrollment.student for enrollment in enrollments]
+            
+        except Course.DoesNotExist:
+            messages.error(request, 'Course not found or you do not have access to it.')
+    
+    context = {
+        'courses': courses,
+        'selected_course': selected_course,
+        'students': students,
+        'selected_course_id': selected_course_id,
+    }
+    
+    return render(request, 'MainInterface/academic_reports.html', context)
+
+
+@login_required
+def generate_student_report(request, student_id):
+    """
+    Generate a comprehensive academic report for a specific student
+    """
+    user_profile = request.user.userprofile
+    
+    # Only allow lecturers and admins
+    if user_profile.user_type not in ['lecturer', 'admin']:
+        messages.error(request, 'Access denied. Only lecturers can generate reports.')
+        return redirect('dashboard')
+    
+    # Get the student
+    try:
+        student = User.objects.get(id=student_id, userprofile__user_type='student')
+    except User.DoesNotExist:
+        messages.error(request, 'Student not found.')
+        return redirect('academic_reports')
+    
+    # Get course context (if specified)
+    course_id = request.GET.get('course_id')
+    selected_course = None
+    
+    if course_id:
+        try:
+            if user_profile.user_type == 'admin':
+                selected_course = Course.objects.get(id=course_id, is_active=True)
+            else:
+                selected_course = Course.objects.get(id=course_id, lecturer=user_profile, is_active=True)
+        except Course.DoesNotExist:
+            messages.error(request, 'Course not found or you do not have access to it.')
+            return redirect('academic_reports')
+    
+    # Verify the lecturer has access to this student
+    if user_profile.user_type == 'lecturer':
+        if selected_course:
+            # Check if student is enrolled in the specific course
+            if not Enrollment.objects.filter(student=student, course=selected_course).exists():
+                messages.error(request, 'Student is not enrolled in this course.')
+                return redirect('academic_reports')
+        else:
+            # Check if student is enrolled in any course taught by this lecturer
+            lecturer_courses = Course.objects.filter(lecturer=user_profile, is_active=True)
+            student_enrollments = Enrollment.objects.filter(
+                student=student,
+                course__in=lecturer_courses
+            )
+            if not student_enrollments.exists():
+                messages.error(request, 'You do not have access to this student\'s records.')
+                return redirect('academic_reports')
+    
+    # Generate the report
+    from django.http import HttpResponse
+    from reportlab.lib.pagesizes import letter, A4
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import inch
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+    from datetime import datetime
+    
+    # Create the HttpResponse object with PDF headers
+    response = HttpResponse(content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="academic_report_{student.username}_{datetime.now().strftime("%Y%m%d")}.pdf"'
+    
+    # Create the PDF document
+    doc = SimpleDocTemplate(response, pagesize=A4, topMargin=1*inch)
+    styles = getSampleStyleSheet()
+    
+    # Custom styles
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=18,
+        spaceAfter=30,
+        alignment=TA_CENTER,
+        textColor=colors.darkblue
+    )
+    
+    heading_style = ParagraphStyle(
+        'CustomHeading',
+        parent=styles['Heading2'],
+        fontSize=14,
+        spaceAfter=12,
+        textColor=colors.darkblue
+    )
+    
+    # Story list to hold all elements
+    story = []
+    
+    # Report title
+    if selected_course:
+        title = f"Academic Report - {student.get_full_name() or student.username}<br/>{selected_course.course_name}"
+    else:
+        title = f"Comprehensive Academic Report<br/>{student.get_full_name() or student.username}"
+    
+    story.append(Paragraph(title, title_style))
+    story.append(Spacer(1, 20))
+    
+    # Student Information
+    story.append(Paragraph("Student Information", heading_style))
+    
+    student_info = [
+        ["Full Name:", student.get_full_name() or "N/A"],
+        ["Username:", student.username],
+        ["Email:", student.email],
+        ["User ID:", str(student.id)],
+        ["Report Generated:", datetime.now().strftime("%B %d, %Y at %I:%M %p")],
+        ["Generated By:", request.user.get_full_name() or request.user.username]
+    ]
+    
+    info_table = Table(student_info, colWidths=[2*inch, 4*inch])
+    info_table.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+    ]))
+    
+    story.append(info_table)
+    story.append(Spacer(1, 20))
+    
+    # Course Enrollments and Grades
+    if selected_course:
+        enrollments = Enrollment.objects.filter(student=student, course=selected_course)
+    else:
+        enrollments = Enrollment.objects.filter(student=student).select_related('course')
+    
+    if enrollments.exists():
+        story.append(Paragraph("Course Enrollments", heading_style))
+        
+        enrollment_data = [["Course", "Instructor", "Enrollment Date", "Current Grade"]]
+        
+        for enrollment in enrollments:
+            # Get the latest grade for this course
+            latest_grade = Grade.objects.filter(
+                student=student,
+                course=enrollment.course
+            ).order_by('-date_graded').first()
+            
+            grade_display = f"{latest_grade.grade_value}%" if latest_grade else "No grades recorded"
+            
+            enrollment_data.append([
+                enrollment.course.course_name,
+                enrollment.course.lecturer.user.get_full_name() or enrollment.course.lecturer.user.username,
+                enrollment.enrollment_date.strftime("%B %d, %Y"),
+                grade_display
+            ])
+        
+        enrollment_table = Table(enrollment_data, colWidths=[2*inch, 1.8*inch, 1.2*inch, 1*inch])
+        enrollment_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ]))
+        
+        story.append(enrollment_table)
+        story.append(Spacer(1, 20))
+    
+    # Assignment Performance
+    if selected_course:
+        assignments = Assignment.objects.filter(course=selected_course).order_by('-due_date')
+    else:
+        # Get assignments from all courses the student is enrolled in
+        enrolled_courses = [enrollment.course for enrollment in enrollments]
+        assignments = Assignment.objects.filter(course__in=enrolled_courses).order_by('-due_date')
+    
+    if assignments.exists():
+        story.append(Paragraph("Assignment Performance", heading_style))
+        
+        assignment_data = [["Assignment", "Course", "Due Date", "Submission Status", "Grade"]]
+        
+        for assignment in assignments[:10]:  # Limit to last 10 assignments
+            try:
+                submission = AssignmentSubmission.objects.get(assignment=assignment, student=student)
+                submission_status = "Submitted" if submission.submission_file else "Submitted (No File)"
+                submission_date = submission.submitted_at.strftime("%m/%d/%Y") if submission.submitted_at else "N/A"
+            except AssignmentSubmission.DoesNotExist:
+                submission_status = "Not Submitted"
+                submission_date = "N/A"
+            
+            # Get grade for this assignment (check by description or assignment type)
+            assignment_grade = Grade.objects.filter(
+                student=student,
+                course=assignment.course,
+                grade_type='assignment',
+                description__icontains=assignment.title
+            ).first()
+            
+            # If no specific grade found, check for assignment grades in this course
+            if not assignment_grade:
+                assignment_grade = Grade.objects.filter(
+                    student=student,
+                    course=assignment.course,
+                    grade_type='assignment'
+                ).first()
+            
+            grade_display = f"{assignment_grade.grade_value}%" if assignment_grade else "Not Graded"
+            
+            assignment_data.append([
+                assignment.title[:30] + "..." if len(assignment.title) > 30 else assignment.title,
+                assignment.course.course_name[:20] + "..." if len(assignment.course.course_name) > 20 else assignment.course.course_name,
+                assignment.due_date.strftime("%m/%d/%Y"),
+                submission_status,
+                grade_display
+            ])
+        
+        assignment_table = Table(assignment_data, colWidths=[2*inch, 1.5*inch, 1*inch, 1.2*inch, 0.8*inch])
+        assignment_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ]))
+        
+        story.append(assignment_table)
+        story.append(Spacer(1, 20))
+    
+    # Grade Summary
+    if selected_course:
+        grades = Grade.objects.filter(student=student, course=selected_course).order_by('-date_graded')
+    else:
+        grades = Grade.objects.filter(student=student).order_by('-date_graded')
+    
+    if grades.exists():
+        story.append(Paragraph("Grade Summary", heading_style))
+        
+        # Calculate average grade
+        total_grades = [grade.grade_value for grade in grades if grade.grade_value is not None]
+        if total_grades:
+            average_grade = sum(total_grades) / len(total_grades)
+            story.append(Paragraph(f"<b>Overall Average:</b> {average_grade:.2f}%", styles['Normal']))
+            story.append(Spacer(1, 10))
+        
+        # Recent grades table
+        grade_data = [["Course", "Assignment/Exam", "Grade", "Date Recorded"]]
+        
+        for grade in grades[:15]:  # Last 15 grades
+            assignment_name = grade.description if grade.description else f"{grade.get_grade_type_display()}"
+            
+            grade_data.append([
+                grade.course.course_name[:25] + "..." if len(grade.course.course_name) > 25 else grade.course.course_name,
+                assignment_name[:30] + "..." if len(assignment_name) > 30 else assignment_name,
+                f"{grade.grade_value}%" if grade.grade_value is not None else "N/A",
+                grade.date_graded.strftime("%m/%d/%Y")
+            ])
+        
+        grade_table = Table(grade_data, colWidths=[2*inch, 2.5*inch, 0.8*inch, 1*inch])
+        grade_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ]))
+        
+        story.append(grade_table)
+        story.append(Spacer(1, 20))
+    
+    # Footer
+    story.append(Spacer(1, 30))
+    footer_text = f"Report generated on {datetime.now().strftime('%B %d, %Y')} by {request.user.get_full_name() or request.user.username}"
+    story.append(Paragraph(footer_text, styles['Normal']))
+    
+    # Build the PDF
+    doc.build(story)
+    
+    return response
