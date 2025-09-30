@@ -559,6 +559,77 @@ def create_user_profile(sender, instance, created, **kwargs):
         # Only create UserProfile if it doesn't already exist
         UserProfile.objects.get_or_create(user=instance)
 
+class ClassSchedule(models.Model):
+    CLASS_TYPE_CHOICES = [
+        ('lecture', 'Lecture'),
+        ('lab', 'Laboratory'),
+        ('tutorial', 'Tutorial'),
+        ('seminar', 'Seminar'),
+        ('workshop', 'Workshop'),
+        ('exam', 'Examination'),
+        ('presentation', 'Presentation'),
+        ('fieldwork', 'Field Work'),
+        ('online', 'Online Session'),
+        ('other', 'Other'),
+    ]
+    
+    title = models.CharField(max_length=200)
+    description = models.TextField(blank=True, help_text="Additional details about the class session")
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='class_schedules')
+    lecturer = models.ForeignKey(
+        UserProfile,
+        on_delete=models.CASCADE,
+        limit_choices_to={'user_type': 'lecturer'},
+        related_name='scheduled_classes'
+    )
+    class_type = models.CharField(max_length=20, choices=CLASS_TYPE_CHOICES, default='lecture')
+    start_datetime = models.DateTimeField()
+    end_datetime = models.DateTimeField()
+    location = models.CharField(max_length=200, blank=True, help_text="Classroom, lab, or meeting location")
+    is_online = models.BooleanField(default=False)
+    meeting_url = models.URLField(blank=True, help_text="Online meeting link if applicable")
+    max_attendees = models.PositiveIntegerField(null=True, blank=True, help_text="Maximum number of attendees (optional)")
+    required_materials = models.TextField(blank=True, help_text="Materials students should bring")
+    notes = models.TextField(blank=True, help_text="Additional notes for students")
+    is_active = models.BooleanField(default=True)
+    is_cancelled = models.BooleanField(default=False)
+    cancellation_reason = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['start_datetime']
+        verbose_name = "Class Schedule"
+        verbose_name_plural = "Class Schedules"
+    
+    def __str__(self):
+        return f"{self.course.course_code} - {self.title} ({self.start_datetime.strftime('%Y-%m-%d %H:%M')})"
+    
+    def get_duration_hours(self):
+        """Get duration in hours"""
+        duration = self.end_datetime - self.start_datetime
+        return duration.total_seconds() / 3600
+    
+    def is_past(self):
+        """Check if the class is in the past"""
+        return timezone.now() > self.end_datetime
+    
+    def is_upcoming(self):
+        """Check if the class is upcoming (within next 24 hours)"""
+        from datetime import timedelta
+        return timezone.now() <= self.start_datetime <= timezone.now() + timedelta(hours=24)
+    
+    def get_status_display(self):
+        """Get human-readable status"""
+        if self.is_cancelled:
+            return "Cancelled"
+        elif self.is_past():
+            return "Completed"
+        elif self.is_upcoming():
+            return "Upcoming"
+        else:
+            return "Scheduled"
+
 @receiver(post_save, sender=User)
 def save_user_profile(sender, instance, **kwargs):
     # Only save if UserProfile exists

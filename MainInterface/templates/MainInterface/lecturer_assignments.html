@@ -250,7 +250,7 @@
         <div class="list-header">
             <h3>📝 My Assignments</h3>
             <div>
-                <p style="margin: 0; color: #666; font-size: 14px;">Note: Assignment creation is available through the Django admin panel</p>
+                <a href="{% url 'create_assignment' %}" class="btn btn-success">➕ Create Assignment</a>
             </div>
         </div>
         
@@ -291,14 +291,14 @@
             <div class="empty-state">
                 <div>📝</div>
                 <p>No assignments created yet</p>
-                <p>Create assignments through the Django admin panel to get started.</p>
+                <p>Click the "Create Assignment" button to get started.</p>
             </div>
         {% endif %}
     </div>
 
     <!-- Quick Actions -->
     <div style="text-align: center; margin-top: 30px;">
-        <a href="/admin/MainInterface/assignment/add/" class="create-button" target="_blank">
+        <a href="{% url 'create_assignment' %}" class="create-button">
             ➕ Create New Assignment
         </a>
     </div>

@@ -1,0 +1,499 @@
+{% extends 'MainInterface/base.html' %}
+
+{% block title %}Manage Course Materials - Database System{% endblock %}
+{% block header %}
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span>Manage Course Materials</span>
+        <div>
+            <a href="{% url 'lecturer_dashboard' %}" style="background-color: #6c757d; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px; margin-right: 10px;">Back to Dashboard</a>
+            <a href="{% url 'logout' %}" style="background-color: #dc3545; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px;">Logout</a>
+        </div>
+    </div>
+{% endblock %}
+
+{% block content %}
+<style>
+    .materials-container {
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+    
+    .stats-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-bottom: 30px;
+    }
+    
+    .stat-card {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        text-align: center;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .stat-number {
+        font-size: 32px;
+        font-weight: bold;
+        color: #28a745;
+        margin: 0;
+    }
+    
+    .stat-label {
+        color: #666;
+        margin: 5px 0 0 0;
+        font-size: 14px;
+    }
+    
+    .materials-header {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        margin-bottom: 30px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 15px;
+    }
+    
+    .header-info h1 {
+        margin: 0 0 5px 0;
+        color: #333;
+        font-size: 24px;
+    }
+    
+    .header-info p {
+        margin: 0;
+        color: #666;
+    }
+    
+    .header-actions {
+        display: flex;
+        gap: 10px;
+    }
+    
+    .filter-section {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        margin-bottom: 30px;
+    }
+    
+    .filter-form {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        align-items: end;
+    }
+    
+    .form-group {
+        margin: 0;
+    }
+    
+    .form-label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: bold;
+        color: #333;
+        font-size: 14px;
+    }
+    
+    .form-control {
+        width: 100%;
+        padding: 8px 12px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 14px;
+    }
+    
+    .materials-list {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        margin-bottom: 30px;
+    }
+    
+    .list-header {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 8px 8px 0 0;
+        border-left: 4px solid #28a745;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .list-header h3 {
+        margin: 0;
+        color: #333;
+        font-size: 20px;
+    }
+    
+    .course-section {
+        border-bottom: 1px solid #eee;
+    }
+    
+    .course-section:last-child {
+        border-bottom: none;
+    }
+    
+    .course-header {
+        background: #f8f9fa;
+        padding: 15px 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid #eee;
+    }
+    
+    .course-title {
+        font-size: 18px;
+        font-weight: bold;
+        color: #333;
+        margin: 0;
+    }
+    
+    .course-code {
+        background: #28a745;
+        color: white;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: bold;
+    }
+    
+    .material-item {
+        padding: 20px;
+        border-bottom: 1px solid #f0f0f0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        transition: background-color 0.2s;
+    }
+    
+    .material-item:hover {
+        background-color: #f8f9fa;
+    }
+    
+    .material-item:last-child {
+        border-bottom: none;
+    }
+    
+    .material-info {
+        flex: 1;
+    }
+    
+    .material-title {
+        font-size: 16px;
+        font-weight: bold;
+        color: #333;
+        margin: 0 0 5px 0;
+    }
+    
+    .material-meta {
+        display: flex;
+        gap: 15px;
+        flex-wrap: wrap;
+        margin: 5px 0;
+        font-size: 14px;
+        color: #666;
+    }
+    
+    .material-description {
+        color: #666;
+        margin: 5px 0 0 0;
+        font-size: 14px;
+        line-height: 1.4;
+    }
+    
+    .material-actions {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+    }
+    
+    .btn {
+        padding: 6px 12px;
+        border: none;
+        border-radius: 4px;
+        text-decoration: none;
+        font-size: 12px;
+        cursor: pointer;
+        transition: background-color 0.2s;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+    }
+    
+    .btn-primary {
+        background-color: #007bff;
+        color: white;
+    }
+    
+    .btn-primary:hover {
+        background-color: #0056b3;
+    }
+    
+    .btn-success {
+        background-color: #28a745;
+        color: white;
+    }
+    
+    .btn-success:hover {
+        background-color: #1e7e34;
+    }
+    
+    .btn-warning {
+        background-color: #ffc107;
+        color: #212529;
+    }
+    
+    .btn-warning:hover {
+        background-color: #e0a800;
+    }
+    
+    .btn-danger {
+        background-color: #dc3545;
+        color: white;
+    }
+    
+    .btn-danger:hover {
+        background-color: #c82333;
+    }
+    
+    .btn-secondary {
+        background-color: #6c757d;
+        color: white;
+    }
+    
+    .btn-secondary:hover {
+        background-color: #545b62;
+    }
+    
+    .status-badge {
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: bold;
+        text-transform: uppercase;
+    }
+    
+    .status-active {
+        background-color: #d4edda;
+        color: #155724;
+    }
+    
+    .status-inactive {
+        background-color: #f8d7da;
+        color: #721c24;
+    }
+    
+    .material-type {
+        background-color: #e3f2fd;
+        color: #1976d2;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-size: 11px;
+        font-weight: bold;
+        text-transform: uppercase;
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        color: #666;
+    }
+    
+    .empty-icon {
+        font-size: 64px;
+        margin-bottom: 20px;
+        opacity: 0.3;
+    }
+    
+    .empty-title {
+        font-size: 24px;
+        margin-bottom: 10px;
+        color: #333;
+    }
+    
+    .empty-text {
+        font-size: 16px;
+        line-height: 1.5;
+        margin-bottom: 20px;
+    }
+    
+    @media (max-width: 768px) {
+        .materials-header {
+            flex-direction: column;
+            align-items: stretch;
+            text-align: center;
+        }
+        
+        .filter-form {
+            grid-template-columns: 1fr;
+        }
+        
+        .material-item {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 15px;
+        }
+        
+        .material-actions {
+            width: 100%;
+            justify-content: center;
+        }
+    }
+</style>
+
+<div class="materials-container">
+    <!-- Display Messages -->
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{% if message.tags == 'error' %}danger{% else %}{{ message.tags }}{% endif %}" style="padding: 15px; margin-bottom: 20px; border: 1px solid transparent; border-radius: 4px; {% if message.tags == 'success' %}background-color: #d4edda; border-color: #c3e6cb; color: #155724;{% elif message.tags == 'error' %}background-color: #f8d7da; border-color: #f5c6cb; color: #721c24;{% endif %}">
+                {{ message }}
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <!-- Materials Header -->
+    <div class="materials-header">
+        <div class="header-info">
+            <h1>📚 Course Materials Management</h1>
+            <p>Upload, organize, and manage learning materials for your courses</p>
+        </div>
+        <div class="header-actions">
+            <a href="{% url 'upload_material' %}" class="btn btn-success">📤 Upload Material</a>
+        </div>
+    </div>
+
+    <!-- Statistics -->
+    <div class="stats-row">
+        <div class="stat-card">
+            <p class="stat-number">{{ total_materials }}</p>
+            <p class="stat-label">Total Materials</p>
+        </div>
+        <div class="stat-card">
+            <p class="stat-number">{{ active_materials }}</p>
+            <p class="stat-label">Active Materials</p>
+        </div>
+        <div class="stat-card">
+            <p class="stat-number">{{ total_downloads }}</p>
+            <p class="stat-label">Total Downloads</p>
+        </div>
+        <div class="stat-card">
+            <p class="stat-number">{{ courses.count }}</p>
+            <p class="stat-label">My Courses</p>
+        </div>
+    </div>
+
+    <!-- Filter Section -->
+    <div class="filter-section">
+        <form method="GET" class="filter-form">
+            <div class="form-group">
+                <label class="form-label">Search</label>
+                <input type="text" name="search" class="form-control" placeholder="Search materials..." value="{{ search_query }}">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Course</label>
+                <select name="course" class="form-control">
+                    <option value="">All Courses</option>
+                    {% for course in courses %}
+                        <option value="{{ course.id }}" {% if selected_course == course.id|stringformat:"s" %}selected{% endif %}>
+                            {{ course.course_code }} - {{ course.course_name }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Material Type</label>
+                <select name="type" class="form-control">
+                    <option value="">All Types</option>
+                    {% for type_key, type_label in material_types %}
+                        <option value="{{ type_key }}" {% if selected_type == type_key %}selected{% endif %}>
+                            {{ type_label }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">&nbsp;</label>
+                <button type="submit" class="btn btn-primary">🔍 Filter</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Materials List -->
+    <div class="materials-list">
+        <div class="list-header">
+            <h3>📋 Your Materials</h3>
+            <div>
+                {% if materials_by_course %}
+                    <span style="color: #666; font-size: 14px;">{{ total_materials }} material{{ total_materials|pluralize }}</span>
+                {% endif %}
+            </div>
+        </div>
+        
+        {% if materials_by_course %}
+            {% for course, materials in materials_by_course.items %}
+                <div class="course-section">
+                    <div class="course-header">
+                        <h4 class="course-title">{{ course.course_name }}</h4>
+                        <span class="course-code">{{ course.course_code }}</span>
+                    </div>
+                    
+                    {% for material in materials %}
+                        <div class="material-item">
+                            <div class="material-info">
+                                <h5 class="material-title">{{ material.title }}</h5>
+                                <div class="material-meta">
+                                    <span class="material-type">{{ material.get_material_type_display }}</span>
+                                    <span>📁 {{ material.get_file_size_display }}</span>
+                                    <span>📅 {{ material.created_at|date:"M d, Y" }}</span>
+                                    <span>⬇️ {{ material.download_count }} download{{ material.download_count|pluralize }}</span>
+                                    <span class="status-badge {% if material.is_active %}status-active{% else %}status-inactive{% endif %}">
+                                        {% if material.is_active %}Active{% else %}Inactive{% endif %}
+                                    </span>
+                                </div>
+                                {% if material.description %}
+                                    <div class="material-description">
+                                        {{ material.description|truncatechars:200 }}
+                                    </div>
+                                {% endif %}
+                            </div>
+                            <div class="material-actions">
+                                <a href="?download={{ material.id }}" class="btn btn-primary" title="Download">
+                                    📥 Download
+                                </a>
+                                <a href="{% url 'edit_material' material.id %}" class="btn btn-warning" title="Edit">
+                                    ✏️ Edit
+                                </a>
+                                <a href="{% url 'delete_material' material.id %}" class="btn btn-danger" title="Delete" onclick="return confirm('Are you sure you want to delete this material?')">
+                                    🗑️ Delete
+                                </a>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endfor %}
+        {% else %}
+            <div class="empty-state">
+                <div class="empty-icon">📚</div>
+                <h3 class="empty-title">No Materials Found</h3>
+                {% if search_query or selected_course or selected_type %}
+                    <p class="empty-text">No materials match your current filters. Try adjusting your search criteria.</p>
+                    <a href="{% url 'manage_materials' %}" class="btn btn-primary">Clear Filters</a>
+                {% else %}
+                    <p class="empty-text">You haven't uploaded any course materials yet.</p>
+                    <a href="{% url 'upload_material' %}" class="btn btn-success">📤 Upload Your First Material</a>
+                {% endif %}
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+{% endblock %}

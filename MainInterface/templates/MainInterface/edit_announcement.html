@@ -1,0 +1,366 @@
+{% extends 'MainInterface/base.html' %}
+
+{% block title %}Edit Announcement - Database System{% endblock %}
+{% block header %}
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span>Edit Announcement</span>
+        <div>
+            <a href="{% url 'manage_announcements' %}" style="background-color: #6c757d; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px; margin-right: 10px;">Back to Manage</a>
+            <a href="{% url 'announcements' %}" style="background-color: #007bff; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px; margin-right: 10px;">View All</a>
+            <a href="{% url 'logout' %}" style="background-color: #dc3545; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px;">Logout</a>
+        </div>
+    </div>
+{% endblock %}
+
+{% block content %}
+<style>
+    .edit-container {
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+    
+    .form-card {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        padding: 30px;
+    }
+    
+    .form-header {
+        text-align: center;
+        margin-bottom: 30px;
+        padding-bottom: 20px;
+        border-bottom: 1px solid #e9ecef;
+    }
+    
+    .form-title {
+        font-size: 24px;
+        font-weight: bold;
+        color: #333;
+        margin: 0 0 10px 0;
+    }
+    
+    .form-subtitle {
+        color: #666;
+        margin: 0;
+    }
+    
+    .form-group {
+        margin-bottom: 20px;
+    }
+    
+    .form-label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 500;
+        color: #333;
+        font-size: 14px;
+    }
+    
+    .form-label.required::after {
+        content: " *";
+        color: #dc3545;
+    }
+    
+    .form-control {
+        width: 100%;
+        padding: 12px;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        font-size: 14px;
+        transition: border-color 0.2s, box-shadow 0.2s;
+        box-sizing: border-box;
+    }
+    
+    .form-control:focus {
+        outline: none;
+        border-color: #007bff;
+        box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+    }
+    
+    .form-control.textarea {
+        min-height: 120px;
+        resize: vertical;
+        font-family: inherit;
+    }
+    
+    .form-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+    }
+    
+    .checkbox-group {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 15px;
+    }
+    
+    .checkbox {
+        width: auto;
+        margin: 0;
+    }
+    
+    .checkbox-label {
+        margin: 0;
+        font-weight: normal;
+        cursor: pointer;
+    }
+    
+    .help-text {
+        font-size: 12px;
+        color: #666;
+        margin-top: 5px;
+        line-height: 1.4;
+    }
+    
+    .form-actions {
+        display: flex;
+        gap: 15px;
+        justify-content: center;
+        margin-top: 30px;
+        padding-top: 20px;
+        border-top: 1px solid #e9ecef;
+    }
+    
+    .btn {
+        padding: 12px 24px;
+        border: none;
+        border-radius: 6px;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-block;
+        text-align: center;
+        transition: all 0.2s;
+    }
+    
+    .btn-primary {
+        background-color: #007bff;
+        color: white;
+    }
+    
+    .btn-primary:hover {
+        background-color: #0056b3;
+        color: white;
+        text-decoration: none;
+    }
+    
+    .btn-secondary {
+        background-color: #6c757d;
+        color: white;
+    }
+    
+    .btn-secondary:hover {
+        background-color: #545b62;
+        color: white;
+        text-decoration: none;
+    }
+    
+    .btn-danger {
+        background-color: #dc3545;
+        color: white;
+    }
+    
+    .btn-danger:hover {
+        background-color: #c82333;
+        color: white;
+        text-decoration: none;
+    }
+    
+    .alert {
+        padding: 12px 16px;
+        margin-bottom: 20px;
+        border: 1px solid transparent;
+        border-radius: 6px;
+    }
+    
+    .alert-danger {
+        color: #721c24;
+        background-color: #f8d7da;
+        border-color: #f5c6cb;
+    }
+    
+    .alert-success {
+        color: #155724;
+        background-color: #d4edda;
+        border-color: #c3e6cb;
+    }
+    
+    .course-dependent {
+        display: none;
+        margin-top: 15px;
+        padding: 15px;
+        background: #f8f9fa;
+        border-radius: 6px;
+        border-left: 3px solid #007bff;
+    }
+    
+    .course-dependent.show {
+        display: block;
+    }
+    
+    .status-info {
+        background: #e9ecef;
+        padding: 15px;
+        border-radius: 6px;
+        margin-bottom: 20px;
+        font-size: 14px;
+    }
+    
+    .status-info strong {
+        color: #333;
+    }
+    
+    @media (max-width: 768px) {
+        .form-grid {
+            grid-template-columns: 1fr;
+        }
+        
+        .form-actions {
+            flex-direction: column;
+        }
+        
+        .btn {
+            width: 100%;
+        }
+    }
+</style>
+
+<div class="edit-container">
+    <!-- Display Messages -->
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{% if message.tags == 'error' %}danger{% else %}{{ message.tags }}{% endif %}">
+                {{ message }}
+            </div>
+        {% endfor %}
+    {% endif %}
+    
+    <div class="form-card">
+        <div class="form-header">
+            <h1 class="form-title">✏️ Edit Announcement</h1>
+            <p class="form-subtitle">Update your announcement details</p>
+        </div>
+        
+        <div class="status-info">
+            <strong>Current Status:</strong> 
+            {% if announcement.is_active %}Active{% else %}Inactive{% endif %}
+            {% if announcement.is_pinned %} | Pinned{% endif %}
+            {% if announcement.expires_at %} | Expires: {{ announcement.expires_at|date:"M d, Y g:i A" }}{% endif %}
+            <br>
+            <strong>Created:</strong> {{ announcement.created_at|date:"M d, Y g:i A" }}
+            <br>
+            <strong>Last Updated:</strong> {{ announcement.updated_at|date:"M d, Y g:i A" }}
+        </div>
+        
+        <form method="POST">
+            {% csrf_token %}
+            
+            <div class="form-group">
+                <label for="title" class="form-label required">Title</label>
+                <input type="text" id="title" name="title" class="form-control" 
+                       value="{{ announcement.title }}" required maxlength="200">
+                <div class="help-text">A clear, descriptive title for your announcement (max 200 characters)</div>
+            </div>
+            
+            <div class="form-group">
+                <label for="content" class="form-label required">Content</label>
+                <textarea id="content" name="content" class="form-control textarea" required>{{ announcement.content }}</textarea>
+                <div class="help-text">Provide detailed information about your announcement</div>
+            </div>
+            
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="priority" class="form-label">Priority</label>
+                    <select id="priority" name="priority" class="form-control">
+                        {% for value, label in priority_choices %}
+                            <option value="{{ value }}" {% if value == announcement.priority %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="help-text">Set the importance level of this announcement</div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="audience" class="form-label">Audience</label>
+                    <select id="audience" name="audience" class="form-control" onchange="toggleCourseSelect()">
+                        {% for value, label in audience_choices %}
+                            <option value="{{ value }}" {% if value == announcement.audience %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="help-text">Who should see this announcement</div>
+                </div>
+            </div>
+            
+            <div id="courseSelect" class="course-dependent {% if announcement.audience == 'course_specific' %}show{% endif %}">
+                <div class="form-group">
+                    <label for="course" class="form-label">Select Course</label>
+                    <select id="course" name="course" class="form-control">
+                        <option value="">Choose a course...</option>
+                        {% for course in user_courses %}
+                            <option value="{{ course.id }}" {% if course.id == announcement.course.id %}selected{% endif %}>
+                                {{ course.course_code }} - {{ course.course_name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                    <div class="help-text">Select the specific course for this announcement</div>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="expires_at" class="form-label">Expiration Date (Optional)</label>
+                <input type="datetime-local" id="expires_at" name="expires_at" class="form-control" 
+                       value="{% if announcement.expires_at %}{{ announcement.expires_at|date:'Y-m-d\TH:i' }}{% endif %}">
+                <div class="help-text">When should this announcement be automatically hidden? Leave blank for no expiration.</div>
+            </div>
+            
+            <div class="form-grid">
+                <div class="checkbox-group">
+                    <input type="checkbox" id="is_active" name="is_active" class="checkbox" 
+                           {% if announcement.is_active %}checked{% endif %}>
+                    <label for="is_active" class="checkbox-label">Active</label>
+                </div>
+                
+                <div class="checkbox-group">
+                    <input type="checkbox" id="is_pinned" name="is_pinned" class="checkbox" 
+                           {% if announcement.is_pinned %}checked{% endif %}>
+                    <label for="is_pinned" class="checkbox-label">Pin to top</label>
+                </div>
+            </div>
+            <div class="help-text">Control the visibility and positioning of your announcement</div>
+            
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Update Announcement</button>
+                <a href="{% url 'manage_announcements' %}" class="btn btn-secondary">Cancel</a>
+                <a href="{% url 'delete_announcement' announcement.id %}" class="btn btn-danger" 
+                   onclick="return confirm('Are you sure you want to delete this announcement?')">Delete</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function toggleCourseSelect() {
+    const audienceSelect = document.getElementById('audience');
+    const courseSelect = document.getElementById('courseSelect');
+    
+    if (audienceSelect.value === 'course_specific') {
+        courseSelect.classList.add('show');
+        document.getElementById('course').required = true;
+    } else {
+        courseSelect.classList.remove('show');
+        document.getElementById('course').required = false;
+        document.getElementById('course').value = '';
+    }
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    toggleCourseSelect();
+});
+</script>
+
+{% endblock %}

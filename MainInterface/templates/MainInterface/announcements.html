@@ -6,10 +6,12 @@
     <div style="display: flex; justify-content: space-between; align-items: center;">
         <span>Announcements</span>
         <div>
-            {% if user.userprofile.user_type == 'student' %}
-                <a href="{% url 'student_dashboard' %}" class="btn btn-secondary">Back to Dashboard</a>
-            {% elif user.userprofile.user_type == 'lecturer' %}
+            {% if user.userprofile.user_type == 'lecturer' %}
+                <a href="{% url 'manage_announcements' %}" class="btn btn-success">Manage Announcements</a>
+                <a href="{% url 'create_announcement' %}" class="btn btn-primary">Create Announcement</a>
                 <a href="{% url 'lecturer_dashboard' %}" class="btn btn-secondary">Back to Dashboard</a>
+            {% elif user.userprofile.user_type == 'student' %}
+                <a href="{% url 'student_dashboard' %}" class="btn btn-secondary">Back to Dashboard</a>
             {% else %}
                 <a href="{% url 'dashboard' %}" class="btn btn-secondary">Back to Dashboard</a>
             {% endif %}
@@ -32,6 +34,18 @@
         font-size: 14px;
         margin-right: 10px;
         display: inline-block;
+        border: none;
+        cursor: pointer;
+    }
+    
+    .btn-primary {
+        background-color: #007bff;
+        color: white;
+    }
+    
+    .btn-success {
+        background-color: #28a745;
+        color: white;
     }
     
     .btn-secondary {
@@ -41,6 +55,12 @@
     
     .btn-danger {
         background-color: #dc3545;
+        color: white;
+    }
+    
+    .btn:hover {
+        opacity: 0.9;
+        text-decoration: none;
         color: white;
     }
     

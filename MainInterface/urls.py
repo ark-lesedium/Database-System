@@ -14,6 +14,13 @@ urlpatterns = [
     path('academic-calendar/', views.academic_calendar_view, name='academic_calendar'),
     path('announcements/', views.announcements_view, name='announcements'),
     path('study-materials/', views.study_materials_view, name='study_materials'),
+    
+    # Course Materials Management URLs
+    path('materials/upload/', views.upload_material_view, name='upload_material'),
+    path('materials/manage/', views.manage_materials_view, name='manage_materials'),
+    path('materials/edit/<int:material_id>/', views.edit_material_view, name='edit_material'),
+    path('materials/delete/<int:material_id>/', views.delete_material_view, name='delete_material'),
+    
     path('manage-courses/', views.manage_courses_view, name='manage_courses'),
     path('add-course/', views.add_course_view, name='add_course'),
     path('edit-course/<int:course_id>/', views.edit_course_view, name='edit_course'),
@@ -42,7 +49,25 @@ urlpatterns = [
     
     # Lecturer assignment management URLs
     path('lecturer/assignments/', views.lecturer_assignments_view, name='lecturer_assignments'),
+    path('lecturer/assignments/create/', views.create_assignment_view, name='create_assignment'),
     path('lecturer/assignments/<int:assignment_id>/submissions/', views.assignment_submissions_view, name='assignment_submissions'),
+    
+    # Class Schedule URLs
+    path('schedule/', views.view_schedule_view, name='view_schedule'),
+    path('schedule/manage/', views.manage_schedule_view, name='manage_schedule'),
+    path('schedule/add/', views.add_schedule_event_view, name='add_schedule_event'),
+    path('schedule/edit/<int:schedule_id>/', views.edit_schedule_event_view, name='edit_schedule_event'),
+    path('schedule/delete/<int:schedule_id>/', views.delete_schedule_event_view, name='delete_schedule_event'),
+    
+    # Announcement Management URLs
+    path('announcements/manage/', views.manage_announcements_view, name='manage_announcements'),
+    path('announcements/create/', views.create_announcement_view, name='create_announcement'),
+    path('announcements/edit/<int:announcement_id>/', views.edit_announcement_view, name='edit_announcement'),
+    path('announcements/delete/<int:announcement_id>/', views.delete_announcement_view, name='delete_announcement'),
+    
+    # Academic Reports URLs
+    path('academic-reports/', views.academic_reports_view, name='academic_reports'),
+    path('academic-reports/generate/<int:student_id>/', views.generate_student_report, name='generate_student_report'),
     
     # PDF Downloads
     path('download-progress-report/', views.download_progress_report, name='download_progress_report'),

@@ -172,6 +172,57 @@
         border-left-color: #dc3545;
     }
     
+    .announcement-item {
+        padding: 12px 0;
+        border-bottom: 1px solid #f0f0f0;
+        margin-bottom: 8px;
+    }
+    
+    .announcement-item:last-child {
+        border-bottom: none;
+        margin-bottom: 0;
+    }
+    
+    .announcement-title {
+        font-weight: 600;
+        color: #333;
+        font-size: 14px;
+        margin-bottom: 4px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    
+    .announcement-content {
+        color: #666;
+        font-size: 13px;
+        line-height: 1.4;
+        margin-bottom: 4px;
+    }
+    
+    .announcement-meta {
+        color: #999;
+        font-size: 11px;
+    }
+    
+    .priority-badge {
+        font-size: 9px;
+        padding: 2px 6px;
+        border-radius: 10px;
+        font-weight: bold;
+        text-transform: uppercase;
+    }
+    
+    .priority-badge.urgent {
+        background: #dc3545;
+        color: white;
+    }
+    
+    .priority-badge.high {
+        background: #fd7e14;
+        color: white;
+    }
+    
     .assignment-row {
         padding: 15px 20px;
         border-bottom: 1px solid #eee;
@@ -367,16 +418,57 @@
         </div>
     </div>
 
+    <!-- Class Schedule -->
+    <div class="dashboard-card schedule-badge">
+        <div class="card-header">
+            <div class="card-icon">🕒</div>
+            <h3 class="card-title">Class Schedule</h3>
+        </div>
+       
+        <div class="card-actions">
+            <a href="{% url 'view_schedule' %}" class="btn-primary">View Schedule</a>
+            <a href="#" class="btn-secondary">Today's Classes</a>
+        </div>
+    </div>
+
     <!-- Announcements -->
     <div class="dashboard-card announcements-badge">
         <div class="card-header">
             <div class="card-icon">📢</div>
-            <h3 class="card-title">Announcements</h3>
+            <h3 class="card-title">Recent Announcements</h3>
         </div>
+        
+        {% if recent_announcements %}
+            <div class="card-content">
+                {% for announcement in recent_announcements %}
+                    <div class="announcement-item">
+                        <div class="announcement-title">
+                            {{ announcement.title|truncatechars:40 }}
+                            {% if announcement.priority == 'urgent' %}
+                                <span class="priority-badge urgent">URGENT</span>
+                            {% elif announcement.priority == 'high' %}
+                                <span class="priority-badge high">HIGH</span>
+                            {% endif %}
+                        </div>
+                        <div class="announcement-content">{{ announcement.content|truncatechars:80 }}</div>
+                        <div class="announcement-meta">
+                            {{ announcement.created_at|timesince }} ago
+                            {% if announcement.course %}
+                                | {{ announcement.course.course_code }}
+                            {% endif %}
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="card-content">
+                <p style="color: #666; text-align: center; margin: 15px 0;">No recent announcements</p>
+            </div>
+        {% endif %}
      
         <div class="card-actions">
             <a href="{% url 'announcements' %}" class="btn-primary">View All</a>
-            <a href="{% url 'announcements' %}" class="btn-secondary">Latest News</a>
+            <a href="{% url 'view_schedule' %}" class="btn-secondary">Calendar</a>
         </div>
     </div>
 
