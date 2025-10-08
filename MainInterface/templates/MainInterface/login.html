@@ -1,43 +1,74 @@
 {% extends "MainInterface/base.html" %}
+{% load static %}
 
-{% block title %}Login - Database System{% endblock %}
+{% block title %}Login - RAGNAR UNIVERSITY{% endblock %}
 
-{% block header %}Login - Database System{% endblock %}
+{% block header %}
+{% endblock %}
 
 {% block content %}
-<div style="max-width: 400px; margin: 0 auto;">
-    <h2 style="text-align: center; margin-bottom: 2rem;">Login</h2>
-    
-    <form method="post">
-        {% csrf_token %}
+<div style="position: relative; min-height: 80vh; display: flex; align-items: center; justify-content: center; padding: 2rem;">
+    <!-- Date in top right corner -->
+    <div style="position: absolute; top: 1rem; right: 1rem; color: #7f8c8d; font-size: 1rem;">
+        {% now "l, F j, Y" %}
+    </div>
+
+    <!-- Left Side - Logo and University Info -->
+    <div style="flex: 1; text-align: center; padding: 2rem;">
+        <img src="{% static 'images/logo.png' %}" alt="RAGNAR UNIVERSITY" style="height: 120px; margin-bottom: 1.5rem;">
+        <h1 style="margin: 0; color: #2c3e50; font-size: 2.2rem; font-weight: bold;">RAGNAR UNIVERSITY</h1>
+        <p style="margin: 0.5rem 0 0 0; color: #7f8c8d; font-size: 1rem;">Excellence in Education Since 2025</p>
+    </div>
+
+    <!-- Right Side - Login Form -->
+    <div style="flex: 1; max-width: 400px; padding: 2rem; background: white; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+        <h2 style="text-align: center; color: #2c3e50; margin-bottom: 2rem;">Secure Login Portal</h2>
         
-        <div class="form-group">
-            <label for="username">Username:</label>
-            <input type="text" id="username" name="username" required>
+        <form method="post">
+            {% csrf_token %}
+            
+            <div style="margin-bottom: 1.5rem;">
+                <label for="username" style="display: block; margin-bottom: 0.5rem; color: #2c3e50; font-weight: bold;">Username:</label>
+                <input type="text" id="username" name="username" required 
+                       style="width: 100%; padding: 0.75rem; border: 2px solid #e9ecef; border-radius: 5px; font-size: 1rem;"
+                       placeholder="Enter your username">
+            </div>
+            
+            <div style="margin-bottom: 1.5rem;">
+                <label for="password" style="display: block; margin-bottom: 0.5rem; color: #2c3e50; font-weight: bold;">Password:</label>
+                <input type="password" id="password" name="password" required 
+                       style="width: 100%; padding: 0.75rem; border: 2px solid #e9ecef; border-radius: 5px; font-size: 1rem;"
+                       placeholder="Enter your password">
+            </div>
+            
+            <div style="margin-bottom: 2rem;">
+                <label for="user_type" style="display: block; margin-bottom: 0.5rem; color: #2c3e50; font-weight: bold;">I am a:</label>
+                <select id="user_type" name="user_type" required 
+                        style="width: 100%; padding: 0.75rem; border: 2px solid #e9ecef; border-radius: 5px; font-size: 1rem; background: white;">
+                    <option value="">-- Select User Type --</option>
+                    <option value="student">Student</option>
+                    <option value="lecturer">Lecturer</option>
+                    <option value="admin">Admin</option>
+                </select>
+            </div>
+            
+            <div>
+                <button type="submit" 
+                        style="width: 100%; padding: 0.75rem; background: #3498db; color: white; border: none; border-radius: 5px; font-size: 1.1rem; font-weight: bold; cursor: pointer;">
+                    Login to Portal
+                </button>
+            </div>
+        </form>
+
+        <!-- Registration Link -->
+        <div style="text-align: center; margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid #e9ecef;">
+            <p style="color: #7f8c8d; margin-bottom: 1rem;">Don't have an account? <a href="{% url 'register' %}" style="color: #3498db; text-decoration: none;">Register here</a></p>
         </div>
-        
-        <div class="form-group">
-            <label for="password">Password:</label>
-            <input type="password" id="password" name="password" required>
+
+        <!-- Footer -->
+        <div style="text-align: center; margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #e9ecef;">
+            <p style="color: #95a5a6; font-size: 0.8rem; margin: 0;">© 2025 Ragnar University. All rights reserved.</p>
         </div>
-        
-        <div class="form-group">
-            <label for="user_type">Login as:</label>
-            <select id="user_type" name="user_type" required>
-                <option value="">-- Select User Type --</option>
-                <option value="student">Student</option>
-                <option value="lecturer">Lecturer</option>
-                <option value="admin">Admin</option>
-            </select>
-        </div>
-        
-        <div class="form-group" style="text-align: center;">
-            <button type="submit">Login</button>
-        </div>
-    </form>
-    
-    <div style="text-align: center; margin-top: 2rem;">
-        <p>Don't have an account? <a href="{% url 'register' %}">Register here</a></p>
     </div>
 </div>
 {% endblock %}

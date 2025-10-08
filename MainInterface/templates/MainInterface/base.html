@@ -1,9 +1,10 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Database System{% endblock %}</title>
+    <title>{% block title %}RAGNAR UNIVERSITY{% endblock %}</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -19,10 +20,36 @@
         }
         
         .header {
-            background-color: #333;
+            background-color: #003366;
             color: white;
             padding: 1rem;
             text-align: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        .logo-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 10px;
+        }
+        
+        .logo {
+            height: 60px;
+            width: auto;
+        }
+        
+        .university-name {
+            font-size: 2rem;
+            font-weight: bold;
+            margin: 0;
+        }
+        
+        .system-name {
+            font-size: 1.2rem;
+            margin: 0;
+            opacity: 0.9;
         }
         
         .main-content {
@@ -90,7 +117,13 @@
 </head>
 <body>
     <header class="header">
-        <h1>{% block header %}Database System{% endblock %}</h1>
+        <div class="logo-container">
+            <img src="{% static 'images/logo.png' %}" alt="RAGNAR UNIVERSITY" class="logo">
+            <div>
+                <h1 class="university-name">RAGNAR UNIVERSITY</h1>
+                <p class="system-name">{% block header %}Student Management System{% endblock %}</p>
+            </div>
+        </div>
     </header>
     
     <div class="container">
