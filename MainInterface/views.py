@@ -177,23 +177,61 @@ def student_dashboard_view(request):
         else:
             pending_assignments.append(assignment)
     
-    # Calculate GPA
-    grades = Grade.objects.filter(
-        student=request.user,
-        grade_type='final_grade'
-    ).select_related('course')
+    # Calculate GPA using new model methods
+    user_profile = request.user.userprofile
+    current_gpa = user_profile.calculate_overall_gpa()
+    gpa_status = user_profile.get_gpa_status()
     
-    if grades.exists():
-        total_points = 0
-        total_credits = 0
-        for grade in grades:
-            grade_points = Grade.GRADE_POINTS.get(grade.grade_value, 0)
-            if grade_points is not None:  # Exclude I, W, P grades from GPA
-                total_points += grade_points * grade.course.credits
-                total_credits += grade.course.credits
-        current_gpa = round(total_points / total_credits, 2) if total_credits > 0 else 0
+    # Get semester-specific GPA (default to current semester)
+    current_semester = 'fall'  # You can get this dynamically
+    semester_gpa = user_profile.get_semester_gpa(current_semester)
+    
+    # Get course-specific GPAs
+    course_gpas = {}
+    for course in enrolled_courses:
+        course_gpa = user_profile.calculate_course_gpa(course)
+        if course_gpa is not None:
+            course_gpas[course.id] = {
+                'gpa': course_gpa,
+                'course': course,
+                'weights': course.get_assessment_weights()
+            }
+    
+    # Get detailed grade statistics
+    all_grades = Grade.objects.filter(student=request.user).select_related('course')
+    grade_stats = {
+        'total_grades': all_grades.count(),
+        'graded_count': all_grades.exclude(grade_value='I').count(),
+        'ungraded_count': all_grades.filter(grade_value='I').count(),
+        'passing_grades': all_grades.filter(
+            grade_value__in=['A+', 'A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'C-']
+        ).count(),
+    }
+    
+    if grade_stats['graded_count'] > 0:
+        grade_stats['pass_rate'] = round(
+            (grade_stats['passing_grades'] / grade_stats['graded_count']) * 100, 1
+        )
     else:
-        current_gpa = 'N/A'
+        grade_stats['pass_rate'] = 0
+    
+    # Get recent grades (including tests and assignments)
+    recent_grades = Grade.objects.filter(
+        student=request.user,
+        numeric_score__isnull=False  # Only graded items
+    ).select_related('course').order_by('-date_graded')[:5]
+    
+    # Get total grade count
+    total_grades_count = Grade.objects.filter(
+        student=request.user,
+        numeric_score__isnull=False
+    ).count()
+    
+    # Get ungraded assessments count
+    ungraded_count = Grade.objects.filter(
+        student=request.user,
+        numeric_score__isnull=True
+    ).count()
     
     # Get recent announcements visible to the student
     from datetime import timedelta
@@ -216,12 +254,19 @@ def student_dashboard_view(request):
     context = {
         'user': request.user,
         'enrolled_courses_count': enrolled_courses_count,
-        'current_gpa': current_gpa,
+        'current_gpa': current_gpa or 'N/A',
+        'gpa_status': gpa_status,
+        'semester_gpa': semester_gpa,
+        'course_gpas': course_gpas,
+        'grade_stats': grade_stats,
         'pending_assignments': pending_assignments[:5],  # Show first 5 pending assignments
         'pending_assignments_count': len(pending_assignments),
         'submitted_assignments_count': len(submitted_assignments),
         'overdue_assignments_count': len(overdue_assignments),
         'recent_announcements': recent_announcements,
+        'recent_grades': recent_grades,
+        'total_grades_count': total_grades_count,
+        'ungraded_count': ungraded_count,
         'attendance_percentage': 85,  # Placeholder for attendance
     }
     
@@ -792,12 +837,84 @@ def course_detail_view(request, course_id):
     
     # Get enrollment status for current user if student
     user_enrollment = None
+    user_assignments = []
+    user_submissions = []
+    user_grades = []
     if hasattr(request.user, 'userprofile') and request.user.userprofile.user_type == 'student':
         user_enrollment = Enrollment.objects.filter(student=request.user, course=course).first()
+        
+        # Only show detailed info if student is enrolled
+        if user_enrollment and user_enrollment.status == 'enrolled':
+            # Get assignments for this course
+            assignments = Assignment.objects.filter(
+                course=course, 
+                status='published'
+            ).order_by('-due_date')
+            
+            # Get user's submissions for these assignments
+            user_submissions = AssignmentSubmission.objects.filter(
+                assignment__course=course,
+                student=request.user
+            ).select_related('assignment')
+            
+            # Create a dict for quick lookup of submissions by assignment
+            submissions_by_assignment = {sub.assignment.id: sub for sub in user_submissions}
+            
+            # Add submission info to assignments
+            user_assignments = []
+            for assignment in assignments:
+                assignment.user_submission = submissions_by_assignment.get(assignment.id)
+                user_assignments.append(assignment)
+            
+            # Get user's grades for this course
+            user_grades = Grade.objects.filter(
+                student=request.user,
+                course=course
+            ).order_by('-date_graded')
+    
+    # Get course announcements
+    announcements = Announcement.objects.filter(
+        Q(course=course) | Q(audience='all', course__isnull=True),
+        is_active=True
+    ).order_by('-is_pinned', '-created_at')[:5]
+    
+    # Filter announcements based on user visibility
+    visible_announcements = []
+    for announcement in announcements:
+        if announcement.is_visible_to_user(request.user):
+            visible_announcements.append(announcement)
+    
+    # Get study materials for enrolled students
+    study_materials = []
+    if user_enrollment and user_enrollment.status == 'enrolled':
+        study_materials = StudyMaterial.objects.filter(
+            course=course,
+            is_active=True
+        ).order_by('-created_at')[:10]
+    
+    # Get class schedule
+    upcoming_classes = ClassSchedule.objects.filter(
+        course=course,
+        is_active=True,
+        is_cancelled=False,
+        start_datetime__gte=timezone.now()
+    ).order_by('start_datetime')[:5]
+    
+    recent_classes = ClassSchedule.objects.filter(
+        course=course,
+        is_active=True,
+        end_datetime__lt=timezone.now()
+    ).order_by('-start_datetime')[:5]
     
     context = {
         'course': course,
         'user_enrollment': user_enrollment,
+        'user_assignments': user_assignments,
+        'user_grades': user_grades,
+        'announcements': visible_announcements,
+        'study_materials': study_materials,
+        'upcoming_classes': upcoming_classes,
+        'recent_classes': recent_classes,
     }
     
     return render(request, 'MainInterface/course_detail.html', context)
@@ -1960,6 +2077,61 @@ def download_submission_view(request, submission_id):
     except Exception as e:
         messages.error(request, 'Error downloading file.')
         return redirect('view_submissions')
+
+@login_required
+def grade_submission_view(request, submission_id):
+    """Grade an assignment submission (lecturer view)"""
+    try:
+        if request.user.userprofile.user_type != 'lecturer':
+            messages.error(request, 'Access denied. Lecturer access required.')
+            return redirect('dashboard')
+    except UserProfile.DoesNotExist:
+        messages.error(request, 'User profile not found.')
+        return redirect('dashboard')
+    
+    submission = get_object_or_404(AssignmentSubmission, id=submission_id)
+    
+    # Check if lecturer owns this assignment
+    if submission.assignment.course.lecturer != request.user.userprofile:
+        messages.error(request, 'You do not have permission to grade this submission.')
+        return redirect('lecturer_assignments')
+    
+    if request.method == 'POST':
+        try:
+            grade = request.POST.get('grade', '').strip()
+            feedback = request.POST.get('feedback', '').strip()
+            
+            # Validate grade
+            if grade:
+                grade_value = float(grade)
+                if grade_value < 0 or grade_value > float(submission.assignment.max_points):
+                    messages.error(request, f'Grade must be between 0 and {submission.assignment.max_points}.')
+                    return render(request, 'MainInterface/grade_submission.html', {'submission': submission})
+                
+                # Update submission
+                submission.grade = grade_value
+                submission.feedback = feedback
+                submission.graded_by = request.user
+                submission.graded_at = timezone.now()
+                submission.status = 'graded'
+                submission.save()
+                
+                messages.success(request, f'Successfully graded submission for {submission.get_student_name()}.')
+                return redirect('assignment_submissions', assignment_id=submission.assignment.id)
+            else:
+                messages.error(request, 'Please enter a valid grade.')
+        
+        except ValueError:
+            messages.error(request, 'Please enter a valid numeric grade.')
+        except Exception as e:
+            messages.error(request, f'An error occurred while grading: {str(e)}')
+    
+    context = {
+        'submission': submission,
+        'assignment': submission.assignment,
+    }
+    
+    return render(request, 'MainInterface/grade_submission.html', context)
 
 @login_required
 def academic_progress_view(request):
@@ -3839,3 +4011,337 @@ def generate_student_report(request, student_id):
     doc.build(story)
     
     return response
+
+@login_required
+def grade_management_view(request):
+    """Grade management dashboard for lecturers"""
+    try:
+        if request.user.userprofile.user_type != 'lecturer':
+            messages.error(request, 'Access denied. Lecturer access required.')
+            return redirect('dashboard')
+    except UserProfile.DoesNotExist:
+        messages.error(request, 'User profile not found.')
+        return redirect('dashboard')
+    
+    # Get lecturer's courses
+    courses = Course.objects.filter(lecturer=request.user.userprofile).prefetch_related('enrollments', 'grades')
+    
+    # Get selected course for filtering
+    selected_course_id = request.GET.get('course')
+    selected_course = None
+    if selected_course_id:
+        try:
+            selected_course = courses.get(id=selected_course_id)
+        except Course.DoesNotExist:
+            pass
+    
+    # Get grades based on selected course
+    if selected_course:
+        grades = Grade.objects.filter(course=selected_course).order_by('-date_graded')
+        students = User.objects.filter(
+            enrollments__course=selected_course,
+            enrollments__status='enrolled'
+        ).distinct()
+    else:
+        grades = Grade.objects.filter(course__lecturer=request.user.userprofile).order_by('-date_graded')
+        students = User.objects.filter(
+            enrollments__course__lecturer=request.user.userprofile,
+            enrollments__status='enrolled'
+        ).distinct()
+    
+    # Statistics
+    total_students = students.count()
+    total_grades = grades.count()
+    recent_grades = grades[:10]
+    
+    # Grade type counts
+    grade_types = grades.values('grade_type').annotate(count=Count('grade_type')).order_by('-count')
+    
+    context = {
+        'courses': courses,
+        'selected_course': selected_course,
+        'grades': recent_grades,
+        'students': students[:20],  # Limit to first 20 for display
+        'total_students': total_students,
+        'total_grades': total_grades,
+        'grade_types': grade_types,
+    }
+    
+    return render(request, 'MainInterface/grade_management.html', context)
+
+@login_required
+def create_test_view(request):
+    """Create a new test/assessment for grading"""
+    try:
+        if request.user.userprofile.user_type != 'lecturer':
+            messages.error(request, 'Access denied. Lecturer access required.')
+            return redirect('dashboard')
+    except UserProfile.DoesNotExist:
+        messages.error(request, 'User profile not found.')
+        return redirect('dashboard')
+    
+    # Get lecturer's courses
+    courses = Course.objects.filter(lecturer=request.user.userprofile)
+    
+    if request.method == 'POST':
+        course_id = request.POST.get('course')
+        test_name = request.POST.get('test_name', '').strip()
+        test_type = request.POST.get('test_type', 'quiz')
+        max_points = request.POST.get('max_points', '100')
+        description = request.POST.get('description', '').strip()
+        
+        # Validation
+        if not all([course_id, test_name, max_points]):
+            messages.error(request, 'Please fill in all required fields.')
+            return render(request, 'MainInterface/create_test.html', {'courses': courses})
+        
+        try:
+            course = courses.get(id=course_id)
+            max_points_float = float(max_points)
+            
+            if max_points_float <= 0:
+                messages.error(request, 'Maximum points must be greater than 0.')
+                return render(request, 'MainInterface/create_test.html', {'courses': courses})
+            
+            # Get all enrolled students in the course
+            enrolled_students = User.objects.filter(
+                enrollments__course=course,
+                enrollments__status='enrolled'
+            )
+            
+            # Create grade entries for all enrolled students
+            grades_created = 0
+            for student in enrolled_students:
+                # Check if grade already exists for this test
+                existing_grade = Grade.objects.filter(
+                    student=student,
+                    course=course,
+                    grade_type=test_type,
+                    description=test_name
+                ).first()
+                
+                if not existing_grade:
+                    Grade.objects.create(
+                        student=student,
+                        course=course,
+                        grade_type=test_type,
+                        description=test_name,
+                        max_points=max_points_float,
+                        grade_value='I',  # Incomplete - to be filled in when grading
+                        numeric_score=None,
+                        comments=description
+                    )
+                    grades_created += 1
+            
+            messages.success(request, f'Test "{test_name}" created successfully for {grades_created} students!')
+            return redirect('grade_management')
+            
+        except Course.DoesNotExist:
+            messages.error(request, 'Selected course not found.')
+        except ValueError:
+            messages.error(request, 'Please enter a valid number for maximum points.')
+        except Exception as e:
+            messages.error(request, f'An error occurred: {str(e)}')
+    
+    context = {
+        'courses': courses,
+    }
+    
+    return render(request, 'MainInterface/create_test.html', context)
+
+@login_required
+def grade_test_view(request, course_id):
+    """Grade tests for a specific course"""
+    try:
+        if request.user.userprofile.user_type != 'lecturer':
+            messages.error(request, 'Access denied. Lecturer access required.')
+            return redirect('dashboard')
+    except UserProfile.DoesNotExist:
+        messages.error(request, 'User profile not found.')
+        return redirect('dashboard')
+    
+    # Get the course
+    course = get_object_or_404(Course, id=course_id, lecturer=request.user.userprofile)
+    
+    # Get filter parameters
+    test_filter = request.GET.get('test', '')
+    student_filter = request.GET.get('student', '')
+    
+    # Get all grades for this course
+    grades = Grade.objects.filter(course=course).select_related('student')
+    
+    # Apply filters
+    if test_filter:
+        grades = grades.filter(description__icontains=test_filter)
+    if student_filter:
+        grades = grades.filter(
+            Q(student__first_name__icontains=student_filter) |
+            Q(student__last_name__icontains=student_filter) |
+            Q(student__username__icontains=student_filter)
+        )
+    
+    # Get unique test names for filter dropdown
+    test_names = Grade.objects.filter(course=course).values_list('description', flat=True).distinct()
+    
+    # Handle grading form submission
+    if request.method == 'POST':
+        grade_id = request.POST.get('grade_id')
+        numeric_score = request.POST.get('numeric_score', '').strip()
+        feedback = request.POST.get('feedback', '').strip()
+        
+        try:
+            grade = Grade.objects.get(id=grade_id, course=course)
+            
+            if numeric_score:
+                score = float(numeric_score)
+                if score < 0 or score > float(grade.max_points):
+                    messages.error(request, f'Score must be between 0 and {grade.max_points}.')
+                else:
+                    # Calculate percentage and letter grade
+                    percentage = (score / float(grade.max_points)) * 100
+                    
+                    # Determine letter grade based on percentage
+                    if percentage >= 90:
+                        letter_grade = 'A+'
+                    elif percentage >= 85:
+                        letter_grade = 'A'
+                    elif percentage >= 80:
+                        letter_grade = 'A-'
+                    elif percentage >= 77:
+                        letter_grade = 'B+'
+                    elif percentage >= 73:
+                        letter_grade = 'B'
+                    elif percentage >= 70:
+                        letter_grade = 'B-'
+                    elif percentage >= 67:
+                        letter_grade = 'C+'
+                    elif percentage >= 63:
+                        letter_grade = 'C'
+                    elif percentage >= 60:
+                        letter_grade = 'C-'
+                    elif percentage >= 57:
+                        letter_grade = 'D+'
+                    elif percentage >= 53:
+                        letter_grade = 'D'
+                    elif percentage >= 50:
+                        letter_grade = 'D-'
+                    else:
+                        letter_grade = 'F'
+                    
+                    # Update grade
+                    grade.numeric_score = score
+                    grade.grade_value = letter_grade
+                    grade.comments = feedback
+                    grade.date_graded = timezone.now()
+                    grade.save()
+                    
+                    messages.success(request, f'Grade updated for {grade.student.get_full_name() or grade.student.username}.')
+            else:
+                messages.error(request, 'Please enter a numeric score.')
+                
+        except Grade.DoesNotExist:
+            messages.error(request, 'Grade not found.')
+        except ValueError:
+            messages.error(request, 'Please enter a valid numeric score.')
+        except Exception as e:
+            messages.error(request, f'An error occurred: {str(e)}')
+    
+    # Paginate grades
+    from django.core.paginator import Paginator
+    paginator = Paginator(grades.order_by('student__last_name', 'student__first_name', 'description'), 20)
+    page_number = request.GET.get('page')
+    page_grades = paginator.get_page(page_number)
+    
+    context = {
+        'course': course,
+        'grades': page_grades,
+        'test_names': test_names,
+        'test_filter': test_filter,
+        'student_filter': student_filter,
+    }
+    
+    return render(request, 'MainInterface/grade_test.html', context)
+
+@login_required
+def weight_management_view(request, course_id):
+    """Manage assessment weights for a course"""
+    try:
+        if request.user.userprofile.user_type != 'lecturer':
+            messages.error(request, 'Access denied. Lecturer access required.')
+            return redirect('dashboard')
+    except UserProfile.DoesNotExist:
+        messages.error(request, 'User profile not found.')
+        return redirect('dashboard')
+    
+    # Get the course and verify lecturer ownership
+    try:
+        course = Course.objects.get(id=course_id, lecturer=request.user.userprofile)
+    except Course.DoesNotExist:
+        messages.error(request, 'Course not found or access denied.')
+        return redirect('lecturer_dashboard')
+    
+    if request.method == 'POST':
+        # Process weight updates
+        weights_updated = False
+        total_weight = 0
+        
+        for key, value in request.POST.items():
+            if key.startswith('weight_'):
+                try:
+                    grade_type = key.replace('weight_', '')
+                    weight = float(value)
+                    total_weight += weight
+                    
+                    # Update weights for all grades of this type in the course
+                    updated_count = Grade.objects.filter(
+                        course=course,
+                        grade_type=grade_type
+                    ).update(weight=weight)
+                    
+                    if updated_count > 0:
+                        weights_updated = True
+                    
+                except (ValueError, TypeError):
+                    messages.error(request, f'Invalid weight value for {grade_type}')
+                    continue
+        
+        # Validate total weights
+        if total_weight > 120:
+            messages.warning(request, f'Total weight is {total_weight}% which is higher than recommended (100%)')
+        elif total_weight < 80:
+            messages.warning(request, f'Total weight is {total_weight}% which is lower than recommended (100%)')
+        
+        if weights_updated:
+            messages.success(request, 'Assessment weights updated successfully!')
+        else:
+            messages.info(request, 'No weights were updated.')
+            
+        return redirect('weight_management', course_id=course_id)
+    
+    # Get current weights and grade types
+    current_weights = course.get_assessment_weights()
+    default_weights = course.get_default_weights()
+    weight_validation = course.validate_total_weights()
+    
+    # Get all grade types used in this course
+    grade_types = list(Grade.objects.filter(course=course).values_list('grade_type', flat=True).distinct())
+    
+    # Get available grade type choices
+    available_grade_types = dict(Grade.GRADE_TYPE_CHOICES)
+    
+    # Grade distribution stats
+    grade_distribution = course.get_grade_distribution()
+    course_stats = course.get_student_performance_stats()
+    
+    context = {
+        'course': course,
+        'current_weights': current_weights,
+        'default_weights': default_weights,
+        'weight_validation': weight_validation,
+        'grade_types': grade_types,
+        'available_grade_types': available_grade_types,
+        'grade_distribution': grade_distribution,
+        'course_stats': course_stats,
+    }
+    
+    return render(request, 'MainInterface/weight_management.html', context)

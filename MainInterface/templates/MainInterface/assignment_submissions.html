@@ -373,9 +373,9 @@
                         <a href="{% url 'download_submission' submission.id %}" class="btn btn-secondary">Download</a>
                     {% endif %}
                     {% if submission.status == 'submitted' %}
-                        <a href="/admin/MainInterface/assignmentsubmission/{{ submission.id }}/change/" class="btn btn-primary" target="_blank">Grade</a>
+                        <a href="{% url 'grade_submission' submission.id %}" class="btn btn-primary">Grade</a>
                     {% elif submission.status == 'graded' %}
-                        <a href="/admin/MainInterface/assignmentsubmission/{{ submission.id }}/change/" class="btn btn-success" target="_blank">View Grade</a>
+                        <a href="{% url 'grade_submission' submission.id %}" class="btn btn-success">View/Edit Grade</a>
                     {% endif %}
                 </div>
             </div>

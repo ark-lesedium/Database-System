@@ -51,6 +51,14 @@ urlpatterns = [
     path('lecturer/assignments/', views.lecturer_assignments_view, name='lecturer_assignments'),
     path('lecturer/assignments/create/', views.create_assignment_view, name='create_assignment'),
     path('lecturer/assignments/<int:assignment_id>/submissions/', views.assignment_submissions_view, name='assignment_submissions'),
+    path('lecturer/assignments/grade/<int:submission_id>/', views.grade_submission_view, name='grade_submission'),
+    
+    # Grade Management URLs
+    path('lecturer/grades/', views.grade_management_view, name='grade_management'),
+    path('lecturer/grades/create-test/', views.create_test_view, name='create_test'),
+    path('lecturer/grades/course/<int:course_id>/', views.grade_test_view, name='grade_test'),
+    path('lecturer/grades/weights/<int:course_id>/', views.weight_management_view, name='weight_management'),
+    path('lecturer/submissions/<int:submission_id>/grade/', views.grade_submission_view, name='grade_submission'),
     
     # Class Schedule URLs
     path('schedule/', views.view_schedule_view, name='view_schedule'),

@@ -60,6 +60,121 @@ class UserProfile(models.Model):
     
     def __str__(self):
         return f"{self.user.username} - {self.get_user_type_display()}"
+    
+    def calculate_course_gpa(self, course):
+        """Calculate GPA for a specific course based on all graded assessments"""
+        if self.user_type != 'student':
+            return None
+        
+        # Get all grades for this course (excluding incomplete, withdrawal)
+        grades = Grade.objects.filter(
+            student=self.user,
+            course=course,
+            grade_value__in=['A+', 'A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'C-', 'D+', 'D', 'D-', 'F', 'NP']
+        )
+        
+        if not grades.exists():
+            return None
+        
+        # Calculate weighted average
+        total_weighted_points = 0
+        total_weight = 0
+        
+        for grade in grades:
+            grade_points = grade.get_grade_points()
+            if grade_points is not None:  # Exclude None values (I, W, P)
+                weight = float(grade.weight)
+                total_weighted_points += grade_points * weight
+                total_weight += weight
+        
+        if total_weight == 0:
+            return None
+        
+        return round(total_weighted_points / total_weight, 2)
+    
+    def calculate_overall_gpa(self):
+        """Calculate overall GPA across all enrolled courses"""
+        if self.user_type != 'student':
+            return None
+        
+        # Get all enrolled courses
+        enrolled_courses = Course.objects.filter(
+            enrollments__student=self.user,
+            enrollments__status='enrolled'
+        ).distinct()
+        
+        if not enrolled_courses.exists():
+            return None
+        
+        total_grade_points = 0
+        total_credits = 0
+        
+        for course in enrolled_courses:
+            course_gpa = self.calculate_course_gpa(course)
+            if course_gpa is not None:
+                course_credits = course.credits
+                total_grade_points += course_gpa * course_credits
+                total_credits += course_credits
+        
+        if total_credits == 0:
+            return None
+        
+        return round(total_grade_points / total_credits, 2)
+    
+    def get_gpa_status(self):
+        """Get GPA status classification"""
+        gpa = self.calculate_overall_gpa()
+        if gpa is None:
+            return "No GPA Available"
+        elif gpa >= 3.8:
+            return "Summa Cum Laude"
+        elif gpa >= 3.5:
+            return "Magna Cum Laude" 
+        elif gpa >= 3.2:
+            return "Cum Laude"
+        elif gpa >= 3.0:
+            return "Good Standing"
+        elif gpa >= 2.0:
+            return "Satisfactory"
+        else:
+            return "Academic Warning"
+    
+    def get_semester_gpa(self, semester, year=None):
+        """Calculate GPA for a specific semester"""
+        if self.user_type != 'student':
+            return None
+        
+        # Filter courses by semester
+        course_filter = {
+            'enrollments__student': self.user,
+            'enrollments__status': 'enrolled',
+            'semester': semester
+        }
+        
+        if year:
+            # If you have a year field in Course model, add it here
+            # course_filter['year'] = year
+            pass
+        
+        semester_courses = Course.objects.filter(**course_filter).distinct()
+        
+        if not semester_courses.exists():
+            return None
+        
+        total_grade_points = 0
+        total_credits = 0
+        
+        for course in semester_courses:
+            course_gpa = self.calculate_course_gpa(course)
+            if course_gpa is not None:
+                course_credits = course.credits
+                total_grade_points += course_gpa * course_credits
+                total_credits += course_credits
+        
+        if total_credits == 0:
+            return None
+        
+        return round(total_grade_points / total_credits, 2)
 
 class Course(models.Model):
     LEVEL_CHOICES = [
@@ -97,11 +212,124 @@ class Course(models.Model):
     def has_available_slots(self):
         return self.get_enrolled_count() < self.max_students
     
+    def get_available_slots(self):
+        """Get the number of available slots."""
+        enrolled_count = self.get_enrolled_count()
+        return max(0, self.max_students - enrolled_count)
+    
     def get_lecturer_name(self):
         """Get the full name of the lecturer."""
         if self.lecturer.user.first_name or self.lecturer.user.last_name:
             return f"{self.lecturer.user.first_name} {self.lecturer.user.last_name}".strip()
         return self.lecturer.user.username
+    
+    def get_grade_distribution(self):
+        """Get grade distribution for this course"""
+        from django.db.models import Count
+        
+        grades = self.grades.filter(
+            grade_value__in=['A+', 'A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'C-', 'D+', 'D', 'D-', 'F']
+        ).values('grade_value').annotate(count=Count('grade_value')).order_by('grade_value')
+        
+        return {grade['grade_value']: grade['count'] for grade in grades}
+    
+    def get_course_average_gpa(self):
+        """Calculate average GPA for all students in this course"""
+        enrolled_students = User.objects.filter(
+            enrollments__course=self,
+            enrollments__status='enrolled'
+        ).distinct()
+        
+        if not enrolled_students.exists():
+            return None
+        
+        total_gpa = 0
+        student_count = 0
+        
+        for student in enrolled_students:
+            if hasattr(student, 'userprofile'):
+                student_gpa = student.userprofile.calculate_course_gpa(self)
+                if student_gpa is not None:
+                    total_gpa += student_gpa
+                    student_count += 1
+        
+        if student_count == 0:
+            return None
+        
+        return round(total_gpa / student_count, 2)
+    
+    def get_assessment_weights(self):
+        """Get configured assessment weights for this course"""
+        weights = {}
+        grade_types = self.grades.values_list('grade_type', flat=True).distinct()
+        
+        for grade_type in grade_types:
+            # Get average weight for this grade type
+            avg_weight = self.grades.filter(grade_type=grade_type).aggregate(
+                avg_weight=models.Avg('weight')
+            )['avg_weight']
+            
+            if avg_weight:
+                weights[grade_type] = round(float(avg_weight), 2)
+        
+        return weights
+    
+    def get_default_weights(self):
+        """Get default assessment weights for course planning"""
+        return {
+            'assignment': 30.0,
+            'quiz': 20.0,
+            'midterm': 20.0,
+            'final': 25.0,
+            'project': 15.0,
+            'participation': 5.0,
+        }
+    
+    def validate_total_weights(self):
+        """Check if total weights for all assessments add up appropriately"""
+        total_weight = 0
+        grade_types = self.grades.values_list('grade_type', flat=True).distinct()
+        
+        for grade_type in grade_types:
+            avg_weight = self.grades.filter(grade_type=grade_type).aggregate(
+                avg_weight=models.Avg('weight')
+            )['avg_weight']
+            
+            if avg_weight:
+                total_weight += float(avg_weight)
+        
+        return {
+            'total_weight': round(total_weight, 2),
+            'is_valid': 90 <= total_weight <= 110  # Allow some flexibility
+        }
+    
+    def get_student_performance_stats(self):
+        """Get comprehensive performance statistics for the course"""
+        enrolled_students = self.get_enrolled_count()
+        
+        if enrolled_students == 0:
+            return None
+        
+        # Grade distribution
+        grade_dist = self.get_grade_distribution()
+        
+        # Calculate pass rate (grades C- and above)
+        passing_grades = ['A+', 'A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'C-']
+        passing_count = sum(grade_dist.get(grade, 0) for grade in passing_grades)
+        total_graded = sum(grade_dist.values())
+        
+        pass_rate = round((passing_count / total_graded * 100), 2) if total_graded > 0 else 0
+        
+        # Average GPA
+        avg_gpa = self.get_course_average_gpa()
+        
+        return {
+            'enrolled_students': enrolled_students,
+            'total_graded': total_graded,
+            'pass_rate': pass_rate,
+            'average_gpa': avg_gpa,
+            'grade_distribution': grade_dist,
+        }
     
     class Meta:
         ordering = ['course_code']
@@ -219,6 +447,68 @@ class Grade(models.Model):
     
     def __str__(self):
         return f"{self.student.username} - {self.course.course_code} - {self.grade_value}"
+    
+    def save(self, *args, **kwargs):
+        """Override save to auto-calculate grade_value from numeric_score if needed"""
+        if self.numeric_score is not None and self.max_points > 0:
+            # Auto-calculate letter grade from numeric score
+            percentage = (float(self.numeric_score) / float(self.max_points)) * 100
+            
+            if percentage >= 90:
+                self.grade_value = 'A+'
+            elif percentage >= 85:
+                self.grade_value = 'A'
+            elif percentage >= 80:
+                self.grade_value = 'A-'
+            elif percentage >= 77:
+                self.grade_value = 'B+'
+            elif percentage >= 73:
+                self.grade_value = 'B'
+            elif percentage >= 70:
+                self.grade_value = 'B-'
+            elif percentage >= 67:
+                self.grade_value = 'C+'
+            elif percentage >= 63:
+                self.grade_value = 'C'
+            elif percentage >= 60:
+                self.grade_value = 'C-'
+            elif percentage >= 57:
+                self.grade_value = 'D+'
+            elif percentage >= 53:
+                self.grade_value = 'D'
+            elif percentage >= 50:
+                self.grade_value = 'D-'
+            else:
+                self.grade_value = 'F'
+        
+        super().save(*args, **kwargs)
+    
+    def get_weighted_points(self):
+        """Get grade points multiplied by weight for GPA calculation"""
+        grade_points = self.get_grade_points()
+        if grade_points is not None:
+            return float(grade_points) * float(self.weight)
+        return 0.0
+    
+    def is_passing_grade(self):
+        """Check if this is a passing grade (C- or better)"""
+        passing_grades = ['A+', 'A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'C-']
+        return self.grade_value in passing_grades
+    
+    def get_grade_category(self):
+        """Get grade category for reporting"""
+        if self.grade_value in ['A+', 'A', 'A-']:
+            return 'Excellent'
+        elif self.grade_value in ['B+', 'B', 'B-']:
+            return 'Good'
+        elif self.grade_value in ['C+', 'C', 'C-']:
+            return 'Satisfactory'
+        elif self.grade_value in ['D+', 'D', 'D-']:
+            return 'Poor'
+        elif self.grade_value == 'F':
+            return 'Fail'
+        else:
+            return 'Other'
     
     def get_grade_points(self):
         """Get grade points for GPA calculation"""

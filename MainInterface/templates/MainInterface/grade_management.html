@@ -1,0 +1,498 @@
+{% extends 'MainInterface/base.html' %}
+
+{% block title %}Grade Management - Database System{% endblock %}
+{% block header %}
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span>Grade Management</span>
+        <div>
+            <a href="{% url 'create_test' %}" style="background-color: #28a745; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px; margin-right: 10px;">Create New Test</a>
+            <a href="{% url 'lecturer_dashboard' %}" style="background-color: #6c757d; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px;">Back to Dashboard</a>
+        </div>
+    </div>
+{% endblock %}
+
+{% block content %}
+<style>
+    .grade-container {
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+    
+    .stats-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-bottom: 30px;
+    }
+    
+    .stat-card {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        text-align: center;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .stat-number {
+        font-size: 28px;
+        font-weight: bold;
+        color: #007bff;
+        margin: 0;
+    }
+    
+    .stat-label {
+        color: #666;
+        margin: 5px 0 0 0;
+        font-size: 14px;
+    }
+    
+    .filters-section {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        margin-bottom: 30px;
+    }
+    
+    .filter-form {
+        display: flex;
+        gap: 15px;
+        align-items: end;
+        flex-wrap: wrap;
+    }
+    
+    .form-group {
+        display: flex;
+        flex-direction: column;
+        min-width: 200px;
+    }
+    
+    .form-label {
+        font-weight: bold;
+        margin-bottom: 5px;
+        color: #333;
+    }
+    
+    .form-select {
+        padding: 10px;
+        border: 2px solid #e9ecef;
+        border-radius: 6px;
+        font-size: 14px;
+        transition: border-color 0.3s;
+    }
+    
+    .form-select:focus {
+        outline: none;
+        border-color: #007bff;
+    }
+    
+    .btn {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 6px;
+        font-size: 14px;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        transition: all 0.3s;
+        font-weight: 500;
+    }
+    
+    .btn-primary {
+        background-color: #007bff;
+        color: white;
+    }
+    
+    .btn-primary:hover {
+        background-color: #0056b3;
+        transform: translateY(-1px);
+    }
+    
+    .btn-success {
+        background-color: #28a745;
+        color: white;
+    }
+    
+    .btn-success:hover {
+        background-color: #218838;
+        transform: translateY(-1px);
+    }
+    
+    .btn-secondary {
+        background-color: #6c757d;
+        color: white;
+    }
+    
+    .btn-secondary:hover {
+        background-color: #545b62;
+        transform: translateY(-1px);
+    }
+    
+    .content-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 30px;
+        margin-bottom: 30px;
+    }
+    
+    .content-section {
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .section-title {
+        font-size: 18px;
+        font-weight: bold;
+        color: #333;
+        margin: 0 0 15px 0;
+        padding-bottom: 10px;
+        border-bottom: 2px solid #007bff;
+    }
+    
+    .grade-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .grade-item {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 6px;
+        border-left: 4px solid #28a745;
+    }
+    
+    .grade-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 5px;
+    }
+    
+    .student-name {
+        font-weight: bold;
+        color: #333;
+    }
+    
+    .grade-value {
+        font-weight: bold;
+        color: #28a745;
+    }
+    
+    .grade-meta {
+        font-size: 12px;
+        color: #666;
+    }
+    
+    .student-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .student-item {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 6px;
+        border-left: 4px solid #007bff;
+    }
+    
+    .student-info {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .course-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+    
+    .course-card {
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        border-left: 4px solid #007bff;
+        transition: transform 0.2s;
+    }
+    
+    .course-card:hover {
+        transform: translateY(-2px);
+    }
+    
+    .course-header {
+        margin-bottom: 15px;
+    }
+    
+    .course-code {
+        font-size: 16px;
+        font-weight: bold;
+        color: #007bff;
+        margin: 0 0 5px 0;
+    }
+    
+    .course-name {
+        color: #333;
+        margin: 0 0 10px 0;
+    }
+    
+    .course-stats {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-bottom: 15px;
+    }
+    
+    .stat-item {
+        text-align: center;
+        background: #f8f9fa;
+        padding: 10px;
+        border-radius: 4px;
+    }
+    
+    .stat-value {
+        font-size: 18px;
+        font-weight: bold;
+        color: #007bff;
+    }
+    
+    .stat-text {
+        font-size: 12px;
+        color: #666;
+    }
+    
+    .course-actions {
+        display: flex;
+        gap: 10px;
+    }
+    
+    .alert {
+        padding: 15px;
+        border-radius: 6px;
+        margin-bottom: 20px;
+    }
+    
+    .alert-success {
+        background-color: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+    }
+    
+    .alert-error {
+        background-color: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 40px;
+        color: #666;
+    }
+    
+    .empty-icon {
+        font-size: 48px;
+        margin-bottom: 15px;
+        color: #ccc;
+    }
+    
+    @media (max-width: 768px) {
+        .content-grid {
+            grid-template-columns: 1fr;
+        }
+        
+        .filter-form {
+            flex-direction: column;
+            align-items: stretch;
+        }
+        
+        .form-group {
+            min-width: auto;
+        }
+        
+        .course-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+<div class="grade-container">
+    <!-- Display Messages -->
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{% if message.tags == 'error' %}error{% else %}{{ message.tags }}{% endif %}">
+                {{ message }}
+            </div>
+        {% endfor %}
+    {% endif %}
+    
+    <!-- Statistics -->
+    <div class="stats-row">
+        <div class="stat-card">
+            <p class="stat-number">{{ total_students }}</p>
+            <p class="stat-label">Total Students</p>
+        </div>
+        <div class="stat-card">
+            <p class="stat-number">{{ total_grades }}</p>
+            <p class="stat-label">Total Grades</p>
+        </div>
+        <div class="stat-card">
+            <p class="stat-number">{{ courses.count }}</p>
+            <p class="stat-label">My Courses</p>
+        </div>
+        <div class="stat-card">
+            <p class="stat-number">{{ grade_types.count }}</p>
+            <p class="stat-label">Assessment Types</p>
+        </div>
+    </div>
+    
+    <!-- Course Filter -->
+    <div class="filters-section">
+        <form method="GET" class="filter-form">
+            <div class="form-group">
+                <label for="course" class="form-label">Filter by Course</label>
+                <select id="course" name="course" class="form-select">
+                    <option value="">All Courses</option>
+                    {% for course in courses %}
+                        <option value="{{ course.id }}" {% if course == selected_course %}selected{% endif %}>
+                            {{ course.course_code }} - {{ course.course_name }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <button type="submit" class="btn btn-primary">
+                🔍 Filter
+            </button>
+            
+            <a href="{% url 'create_test' %}" class="btn btn-success">
+                ➕ Create New Test
+            </a>
+        </form>
+    </div>
+    
+    <!-- Course Cards -->
+    <div class="course-grid">
+        {% for course in courses %}
+            <div class="course-card">
+                <div class="course-header">
+                    <h3 class="course-code">{{ course.course_code }}</h3>
+                    <p class="course-name">{{ course.course_name }}</p>
+                </div>
+                
+                <div class="course-stats">
+                    <div class="stat-item">
+                        <div class="stat-value">{{ course.get_enrolled_count }}</div>
+                        <div class="stat-text">Students</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value">{{ course.grades.count }}</div>
+                        <div class="stat-text">Grades</div>
+                    </div>
+                </div>
+                
+                <div class="course-actions">
+                    <a href="{% url 'grade_test' course.id %}" class="btn btn-primary">Grade Tests</a>
+                    <a href="{% url 'create_test' %}?course={{ course.id }}" class="btn btn-secondary">Add Test</a>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+    
+    <!-- Recent Activity -->
+    {% if selected_course %}
+        <div class="content-grid">
+            <!-- Recent Grades -->
+            <div class="content-section">
+                <h3 class="section-title">Recent Grades - {{ selected_course.course_code }}</h3>
+                {% if grades %}
+                    <div class="grade-list">
+                        {% for grade in grades %}
+                            <div class="grade-item">
+                                <div class="grade-header">
+                                    <span class="student-name">{{ grade.student.get_full_name|default:grade.student.username }}</span>
+                                    <span class="grade-value">
+                                        {% if grade.numeric_score %}
+                                            {{ grade.numeric_score }}/{{ grade.max_points }} ({{ grade.grade_value }})
+                                        {% else %}
+                                            Not Graded
+                                        {% endif %}
+                                    </span>
+                                </div>
+                                <div class="grade-meta">
+                                    {{ grade.description }} - {{ grade.get_grade_type_display }}
+                                    {% if grade.date_graded %} - {{ grade.date_graded|date:"M d, Y" }}{% endif %}
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="empty-state">
+                        <div class="empty-icon">📊</div>
+                        <p>No grades found for this course</p>
+                    </div>
+                {% endif %}
+            </div>
+            
+            <!-- Enrolled Students -->
+            <div class="content-section">
+                <h3 class="section-title">Enrolled Students - {{ selected_course.course_code }}</h3>
+                {% if students %}
+                    <div class="student-list">
+                        {% for student in students %}
+                            <div class="student-item">
+                                <div class="student-info">
+                                    <span class="student-name">{{ student.get_full_name|default:student.username }}</span>
+                                    <span class="grade-value">
+                                        {% with student_grades=student.grades.all %}
+                                            {{ student_grades.count }} grades
+                                        {% endwith %}
+                                    </span>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="empty-state">
+                        <div class="empty-icon">👥</div>
+                        <p>No students enrolled</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    {% elif not selected_course and grades %}
+        <!-- All Recent Grades -->
+        <div class="content-section">
+            <h3 class="section-title">Recent Grades - All Courses</h3>
+            <div class="grade-list">
+                {% for grade in grades %}
+                    <div class="grade-item">
+                        <div class="grade-header">
+                            <span class="student-name">{{ grade.student.get_full_name|default:grade.student.username }}</span>
+                            <span class="grade-value">
+                                {% if grade.numeric_score %}
+                                    {{ grade.numeric_score }}/{{ grade.max_points }} ({{ grade.grade_value }})
+                                {% else %}
+                                    Not Graded
+                                {% endif %}
+                            </span>
+                        </div>
+                        <div class="grade-meta">
+                            {{ grade.course.course_code }} - {{ grade.description }} - {{ grade.get_grade_type_display }}
+                            {% if grade.date_graded %} - {{ grade.date_graded|date:"M d, Y" }}{% endif %}
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    {% endif %}
+</div>
+
+{% endblock %}

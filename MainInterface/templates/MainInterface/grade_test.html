@@ -1,0 +1,502 @@
+{% extends 'MainInterface/base.html' %}
+
+{% block title %}Grade Tests - {{ course.course_code }} - Database System{% endblock %}
+{% block header %}
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span>Grade Tests - {{ course.course_code }}</span>
+        <div>
+            <a href="{% url 'create_test' %}?course={{ course.id }}" style="background-color: #28a745; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px; margin-right: 10px;">Add New Test</a>
+            <a href="{% url 'grade_management' %}" style="background-color: #6c757d; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px;">Back to Grade Management</a>
+        </div>
+    </div>
+{% endblock %}
+
+{% block content %}
+<style>
+    .grade-container {
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+    
+    .course-header {
+        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+        color: white;
+        padding: 30px;
+        border-radius: 8px;
+        margin-bottom: 30px;
+        text-align: center;
+    }
+    
+    .course-title {
+        font-size: 28px;
+        font-weight: bold;
+        margin: 0 0 10px 0;
+    }
+    
+    .course-subtitle {
+        font-size: 16px;
+        opacity: 0.9;
+        margin: 0;
+    }
+    
+    .filters-section {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        margin-bottom: 30px;
+    }
+    
+    .filter-form {
+        display: flex;
+        gap: 15px;
+        align-items: end;
+        flex-wrap: wrap;
+    }
+    
+    .form-group {
+        display: flex;
+        flex-direction: column;
+        min-width: 200px;
+    }
+    
+    .form-label {
+        font-weight: bold;
+        margin-bottom: 5px;
+        color: #333;
+    }
+    
+    .form-control {
+        padding: 10px;
+        border: 2px solid #e9ecef;
+        border-radius: 6px;
+        font-size: 14px;
+        transition: border-color 0.3s;
+    }
+    
+    .form-control:focus {
+        outline: none;
+        border-color: #007bff;
+    }
+    
+    .btn {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 6px;
+        font-size: 14px;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        transition: all 0.3s;
+        font-weight: 500;
+    }
+    
+    .btn-primary {
+        background-color: #007bff;
+        color: white;
+    }
+    
+    .btn-primary:hover {
+        background-color: #0056b3;
+        transform: translateY(-1px);
+    }
+    
+    .btn-success {
+        background-color: #28a745;
+        color: white;
+    }
+    
+    .btn-success:hover {
+        background-color: #218838;
+        transform: translateY(-1px);
+    }
+    
+    .btn-secondary {
+        background-color: #6c757d;
+        color: white;
+    }
+    
+    .btn-secondary:hover {
+        background-color: #545b62;
+        transform: translateY(-1px);
+    }
+    
+    .grades-section {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        overflow: hidden;
+    }
+    
+    .section-header {
+        background: #f8f9fa;
+        padding: 20px;
+        border-bottom: 1px solid #dee2e6;
+    }
+    
+    .section-title {
+        font-size: 18px;
+        font-weight: bold;
+        color: #333;
+        margin: 0;
+    }
+    
+    .grade-list {
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .grade-item {
+        padding: 20px;
+        border-bottom: 1px solid #e9ecef;
+        transition: background-color 0.2s;
+    }
+    
+    .grade-item:hover {
+        background-color: #f8f9fa;
+    }
+    
+    .grade-item:last-child {
+        border-bottom: none;
+    }
+    
+    .grade-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+    }
+    
+    .student-info {
+        flex: 1;
+    }
+    
+    .student-name {
+        font-size: 16px;
+        font-weight: bold;
+        color: #333;
+        margin: 0 0 5px 0;
+    }
+    
+    .test-info {
+        font-size: 14px;
+        color: #666;
+    }
+    
+    .grade-status {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    
+    .status-badge {
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: bold;
+        text-transform: uppercase;
+    }
+    
+    .status-graded {
+        background-color: #d4edda;
+        color: #155724;
+    }
+    
+    .status-ungraded {
+        background-color: #fff3cd;
+        color: #856404;
+    }
+    
+    .grade-form {
+        display: grid;
+        grid-template-columns: 1fr 2fr auto;
+        gap: 15px;
+        align-items: start;
+    }
+    
+    .score-input {
+        max-width: 120px;
+    }
+    
+    .feedback-input {
+        min-height: 80px;
+        resize: vertical;
+    }
+    
+    .current-grade {
+        background: #e3f2fd;
+        padding: 10px;
+        border-radius: 4px;
+        border-left: 4px solid #2196f3;
+        margin-bottom: 15px;
+    }
+    
+    .current-grade-text {
+        font-weight: bold;
+        color: #1976d2;
+        margin: 0;
+    }
+    
+    .pagination {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 10px;
+        padding: 20px;
+    }
+    
+    .pagination a {
+        padding: 8px 12px;
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        text-decoration: none;
+        color: #007bff;
+    }
+    
+    .pagination a:hover {
+        background: #e9ecef;
+    }
+    
+    .pagination .current {
+        padding: 8px 12px;
+        background: #007bff;
+        color: white;
+        border-radius: 4px;
+    }
+    
+    .alert {
+        padding: 15px;
+        border-radius: 6px;
+        margin-bottom: 20px;
+    }
+    
+    .alert-success {
+        background-color: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+    }
+    
+    .alert-error {
+        background-color: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+    }
+    
+    .empty-icon {
+        font-size: 64px;
+        margin-bottom: 20px;
+        color: #ccc;
+    }
+    
+    .empty-title {
+        font-size: 20px;
+        color: #333;
+        margin-bottom: 10px;
+    }
+    
+    .empty-description {
+        color: #666;
+        margin-bottom: 20px;
+    }
+    
+    @media (max-width: 768px) {
+        .filter-form {
+            flex-direction: column;
+            align-items: stretch;
+        }
+        
+        .form-group {
+            min-width: auto;
+        }
+        
+        .grade-form {
+            grid-template-columns: 1fr;
+            gap: 10px;
+        }
+        
+        .grade-header {
+            flex-direction: column;
+            align-items: start;
+            gap: 10px;
+        }
+    }
+</style>
+
+<div class="grade-container">
+    <!-- Display Messages -->
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{% if message.tags == 'error' %}error{% else %}{{ message.tags }}{% endif %}">
+                {{ message }}
+            </div>
+        {% endfor %}
+    {% endif %}
+    
+    <!-- Course Header -->
+    <div class="course-header">
+        <h1 class="course-title">{{ course.course_code }} - {{ course.course_name }}</h1>
+        <p class="course-subtitle">Grade Tests and Assessments</p>
+    </div>
+    
+    <!-- Filters -->
+    <div class="filters-section">
+        <form method="GET" class="filter-form">
+            <div class="form-group">
+                <label for="test" class="form-label">Filter by Test</label>
+                <input type="text" id="test" name="test" class="form-control" 
+                       placeholder="Test name..." value="{{ test_filter }}">
+            </div>
+            
+            <div class="form-group">
+                <label for="student" class="form-label">Filter by Student</label>
+                <input type="text" id="student" name="student" class="form-control" 
+                       placeholder="Student name..." value="{{ student_filter }}">
+            </div>
+            
+            <button type="submit" class="btn btn-primary">
+                🔍 Filter
+            </button>
+            
+            <a href="{% url 'grade_test' course.id %}" class="btn btn-secondary">
+                🔄 Clear Filters
+            </a>
+        </form>
+    </div>
+    
+    <!-- Test Names Available -->
+    {% if test_names %}
+        <div style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <h4 style="margin: 0 0 10px 0; color: #333;">Available Tests:</h4>
+            <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                {% for test_name in test_names %}
+                    <a href="?test={{ test_name }}" style="background: #e3f2fd; color: #1976d2; padding: 4px 8px; border-radius: 4px; text-decoration: none; font-size: 12px;">
+                        {{ test_name }}
+                    </a>
+                {% endfor %}
+            </div>
+        </div>
+    {% endif %}
+    
+    <!-- Grades Section -->
+    <div class="grades-section">
+        <div class="section-header">
+            <h3 class="section-title">
+                📊 Student Grades 
+                ({{ grades|length }} of {{ grades.paginator.count }} total)
+            </h3>
+        </div>
+        
+        {% if grades %}
+            <div class="grade-list">
+                {% for grade in grades %}
+                    <div class="grade-item">
+                        <div class="grade-header">
+                            <div class="student-info">
+                                <h4 class="student-name">{{ grade.student.get_full_name|default:grade.student.username }}</h4>
+                                <div class="test-info">
+                                    {{ grade.description }} - {{ grade.get_grade_type_display }}
+                                    (Max: {{ grade.max_points }} points)
+                                </div>
+                            </div>
+                            <div class="grade-status">
+                                {% if grade.numeric_score is not None %}
+                                    <span class="status-badge status-graded">Graded</span>
+                                {% else %}
+                                    <span class="status-badge status-ungraded">Not Graded</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        
+                        {% if grade.numeric_score is not None %}
+                            <div class="current-grade">
+                                <p class="current-grade-text">
+                                    Current Grade: {{ grade.numeric_score }}/{{ grade.max_points }} ({{ grade.grade_value }})
+                                    {% if grade.date_graded %} - Graded on {{ grade.date_graded|date:"M d, Y g:i A" }}{% endif %}
+                                </p>
+                                {% if grade.comments %}
+                                    <p style="margin: 5px 0 0 0; color: #666; font-size: 14px;">
+                                        Feedback: {{ grade.comments }}
+                                    </p>
+                                {% endif %}
+                            </div>
+                        {% endif %}
+                        
+                        <!-- Grading Form -->
+                        <form method="post" class="grade-form">
+                            {% csrf_token %}
+                            <input type="hidden" name="grade_id" value="{{ grade.id }}">
+                            
+                            <div>
+                                <label for="score_{{ grade.id }}" class="form-label">Score</label>
+                                <input type="number" id="score_{{ grade.id }}" name="numeric_score" 
+                                       class="form-control score-input"
+                                       min="0" max="{{ grade.max_points }}" step="0.1"
+                                       value="{% if grade.numeric_score %}{{ grade.numeric_score }}{% endif %}"
+                                       placeholder="0-{{ grade.max_points }}">
+                            </div>
+                            
+                            <div>
+                                <label for="feedback_{{ grade.id }}" class="form-label">Feedback</label>
+                                <textarea id="feedback_{{ grade.id }}" name="feedback" 
+                                          class="form-control feedback-input"
+                                          placeholder="Optional feedback for student...">{% if grade.comments %}{{ grade.comments }}{% endif %}</textarea>
+                            </div>
+                            
+                            <div>
+                                <button type="submit" class="btn btn-success">
+                                    💾 Save Grade
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                {% endfor %}
+            </div>
+            
+            <!-- Pagination -->
+            {% if grades.has_other_pages %}
+                <div class="pagination">
+                    {% if grades.has_previous %}
+                        <a href="?page=1{% if test_filter %}&test={{ test_filter }}{% endif %}{% if student_filter %}&student={{ student_filter }}{% endif %}">&laquo; First</a>
+                        <a href="?page={{ grades.previous_page_number }}{% if test_filter %}&test={{ test_filter }}{% endif %}{% if student_filter %}&student={{ student_filter }}{% endif %}">Previous</a>
+                    {% endif %}
+                    
+                    <span class="current">
+                        Page {{ grades.number }} of {{ grades.paginator.num_pages }}
+                    </span>
+                    
+                    {% if grades.has_next %}
+                        <a href="?page={{ grades.next_page_number }}{% if test_filter %}&test={{ test_filter }}{% endif %}{% if student_filter %}&student={{ student_filter }}{% endif %}">Next</a>
+                        <a href="?page={{ grades.paginator.num_pages }}{% if test_filter %}&test={{ test_filter }}{% endif %}{% if student_filter %}&student={{ student_filter }}{% endif %}">Last &raquo;</a>
+                    {% endif %}
+                </div>
+            {% endif %}
+        {% else %}
+            <div class="empty-state">
+                <div class="empty-icon">📊</div>
+                <h3 class="empty-title">No Grades Found</h3>
+                <p class="empty-description">
+                    {% if test_filter or student_filter %}
+                        No grades match your current filters. Try adjusting your search criteria.
+                    {% else %}
+                        No tests have been created for this course yet.
+                    {% endif %}
+                </p>
+                {% if test_filter or student_filter %}
+                    <a href="{% url 'grade_test' course.id %}" class="btn btn-primary">Clear Filters</a>
+                {% else %}
+                    <a href="{% url 'create_test' %}?course={{ course.id }}" class="btn btn-success">Create First Test</a>
+                {% endif %}
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+{% endblock %}

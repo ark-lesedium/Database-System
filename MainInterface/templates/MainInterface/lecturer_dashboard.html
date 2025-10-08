@@ -2,9 +2,9 @@
 
 {% block title %}Lecturer Dashboard - Database System{% endblock %}
 {% block header %}
-    <div style="display: flex; justify-content: space-between; align-items: center;">
+    <div style="display: flex; justify-content: space-between; align-items: center; position: relative;">
         <span>Lecturer Dashboard</span>
-        <a href="{% url 'logout' %}" style="background-color: #dc3545; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px;">Logout</a>
+        <a href="{% url 'logout' %}" style="background-color: #dc3545; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px; position: absolute; right: 0; top: 50%; transform: translateY(-50%);">Logout</a>
     </div>
 {% endblock %}
 
@@ -238,9 +238,27 @@
         </div>
      
         <div class="card-actions">
-            <a href="#" class="btn-primary">Grade Book</a>
-            <a href="#" class="btn-secondary">Grade Reports</a>
+            <a href="{% url 'grade_management' %}" class="btn-primary">Grade Book</a>
+            <a href="{% url 'create_test' %}" class="btn-secondary">Create Test</a>
         </div>
+        
+        <!-- Course Weight Management -->
+        {% if courses %}
+        <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #eee;">
+            <h4 style="margin: 0 0 10px 0; font-size: 14px; color: #666;">Manage Assessment Weights</h4>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                {% for course in courses|slice:":3" %}
+                <a href="{% url 'weight_management' course.id %}" 
+                   style="background: #f8f9fa; color: #495057; padding: 4px 8px; border-radius: 4px; text-decoration: none; font-size: 12px; border: 1px solid #dee2e6;">
+                    {{ course.course_code }}
+                </a>
+                {% endfor %}
+                {% if courses|length > 3 %}
+                <span style="font-size: 12px; color: #6c757d;">+{{ courses|length|add:"-3" }} more</span>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
     </div>
 
     <!-- Content & Materials -->
