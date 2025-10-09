@@ -4,10 +4,12 @@
 {% block header %}
     <div style="display: flex; justify-content: space-between; align-items: center;">
         <span>Student Management</span>
-        <div>
-            <a href="{% url 'lecturer_dashboard' %}" class="btn btn-secondary">Back to Dashboard</a>
-            <a href="{% url 'logout' %}" class="btn btn-danger">Logout</a>
-        </div>
+      
+<div style="position: absolute; top: 20px; right: 30px; z-index: 10;">
+    <a href="{% url 'lecturer_dashboard' %}" class="btn btn-secondary" style="background-color: #6c757d; color: white;">Back to Dashboard</a>
+    <a href="{% url 'logout' %}" class="btn btn-danger" style="background-color: #dc3545; color: white;">Logout</a>
+</div>
+
     </div>
 {% endblock %}
 

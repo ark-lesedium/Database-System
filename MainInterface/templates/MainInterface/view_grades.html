@@ -2,12 +2,10 @@
 
 {% block title %}My Grades - Database System{% endblock %}
 {% block header %}
-    <div style="display: flex; justify-content: space-between; align-items: center;">
-        <span>My Grades & Results</span>
-        <div>
-            <a href="{% url 'student_dashboard' %}" style="background-color: #6c757d; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px; margin-right: 10px;">Back to Dashboard</a>
-            <a href="{% url 'logout' %}" style="background-color: #dc3545; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px;">Logout</a>
-        </div>
+  <div style="position: absolute; top: 20px; right: 30px; z-index: 10;">
+    <a href="{% url 'student_dashboard' %}" class="btn btn-secondary" style="background-color: #6c757d; color: #fff;">Back to Dashboard</a>
+    <a href="{% url 'logout' %}" class="btn btn-danger" style="background-color: #dc3545; color: #fff;">Logout</a>
+</div>
     </div>
 {% endblock %}
 
