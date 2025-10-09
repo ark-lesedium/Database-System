@@ -1,11 +1,9 @@
 {% extends 'MainInterface/base.html' %}
 
 {% block title %}Create Test - Database System{% endblock %}
-{% block header %}
-    <div style="display: flex; justify-content: space-between; align-items: center;">
-        <span>Create New Test</span>
-        <a href="{% url 'grade_management' %}" style="background-color: #6c757d; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px;">Back to Grade Management</a>
-    </div>
+{% block header %}Create New Test{% endblock %}
+{% block nav_buttons %}
+    <a href="{% url 'grade_management' %}" class="nav-btn">Back to Grade Management</a>
 {% endblock %}
 
 {% block content %}

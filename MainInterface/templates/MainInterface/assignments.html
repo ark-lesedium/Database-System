@@ -1,11 +1,9 @@
 {% extends 'MainInterface/base.html' %}
 
 {% block title %}Assignments - Database System{% endblock %}
-{% block header %}
-    <div style="display: flex; justify-content: space-between; align-items: center;">
-        <span>Assignments</span>
-        <a href="{% url 'student_dashboard' %}" style="background-color: #6c757d; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px;">Back to Dashboard</a>
-    </div>
+{% block header %}Assignments{% endblock %}
+{% block nav_buttons %}
+    <a href="{% url 'student_dashboard' %}" class="nav-btn">Back to Dashboard</a>
 {% endblock %}
 
 {% block content %}

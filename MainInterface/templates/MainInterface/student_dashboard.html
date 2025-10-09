@@ -1,11 +1,9 @@
 {% extends 'MainInterface/base.html' %}
 
 {% block title %}Student Dashboard - Database System{% endblock %}
-{% block header %}
-    <div style="display: flex; justify-content: space-between; align-items: center;">
-        <span>Student Dashboard</span>
-        <a href="{% url 'logout' %}" style="background-color: #dc3545; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px;">Logout</a>
-    </div>
+{% block header %}Student Dashboard{% endblock %}
+{% block nav_buttons %}
+    <!-- Additional nav buttons can go here if needed -->
 {% endblock %}
 
 {% block content %}
@@ -511,7 +509,6 @@
         
         <div class="card-actions">
             <a href="{% url 'profile_management' %}" class="btn-primary">Edit Profile</a>
-            <a href="#" class="btn-secondary">Change Password</a>
         </div>
     </div>
 
@@ -524,7 +521,6 @@
        
         <div class="card-actions">
             <a href="{% url 'browse_courses' %}" class="btn-primary">Browse Courses</a>
-            <a href="#" class="btn-secondary">Registration Status</a>
         </div>
     </div>
 
@@ -598,7 +594,6 @@
        
         <div class="card-actions">
             <a href="{% url 'academic_calendar' %}" class="btn-primary">View Calendar</a>
-            <a href="#" class="btn-secondary">Exam Schedule</a>
         </div>
     </div>
 
@@ -611,7 +606,6 @@
        
         <div class="card-actions">
             <a href="{% url 'view_schedule' %}" class="btn-primary">View Schedule</a>
-            <a href="#" class="btn-secondary">Today's Classes</a>
         </div>
     </div>
 
@@ -690,16 +684,96 @@
         </div>
     </div>
 
-    <!-- Attendance Records -->
-    <div class="dashboard-card attendance-badge">
+    
+    <!-- Academic Documents -->
+    <div class="dashboard-card progress-badge" style="border-left-color: #6f42c1;">
         <div class="card-header">
-            <div class="card-icon">✅</div>
-            <h3 class="card-title">Attendance Records</h3>
+            <div class="card-icon" style="background: linear-gradient(135deg, #6f42c1, #8b5cf6);">📋</div>
+            <h3 class="card-title">Academic Documents</h3>
         </div>
-       
-        <div class="card-actions">
-            <a href="#" class="btn-primary">View Records</a>
-            <a href="#" class="btn-secondary">Monthly Report</a>
+        <div class="card-content">
+            <p style="margin-bottom: 20px; color: #666; font-size: 14px; line-height: 1.5;">Download official academic documents and transcripts with just a few clicks</p>
+            
+            <!-- Document Categories -->
+            <div style="display: grid; gap: 15px; margin-bottom: 20px;">
+                <!-- Semester Results Section -->
+                <div style="background: linear-gradient(135deg, #e3f2fd, #f8f9fa); border-radius: 8px; padding: 16px; border-left: 3px solid #2196f3;">
+                    <div style="display: flex; align-items: center; margin-bottom: 12px;">
+                        <span style="background: #2196f3; color: white; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; margin-right: 10px;">📊</span>
+                        <h4 style="margin: 0; color: #1976d2; font-size: 14px; font-weight: 600;">Semester Results</h4>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px;">
+                        <a href="{% url 'generate_semester_results' user.id %}?semester=first&year=2025" 
+                           style="background: white; color: #2e7d32; padding: 10px 14px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 500; text-align: center; border: 1px solid #e8f5e8; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 6px;"
+                           onmouseover="this.style.backgroundColor='#e8f5e8'; this.style.transform='translateY(-1px)'"
+                           onmouseout="this.style.backgroundColor='white'; this.style.transform='translateY(0)'">
+                            📚 First Semester 2025
+                        </a>
+                        <a href="{% url 'generate_semester_results' user.id %}?semester=second&year=2025" 
+                           style="background: white; color: #1976d2; padding: 10px 14px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 500; text-align: center; border: 1px solid #e3f2fd; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 6px;"
+                           onmouseover="this.style.backgroundColor='#e3f2fd'; this.style.transform='translateY(-1px)'"
+                           onmouseout="this.style.backgroundColor='white'; this.style.transform='translateY(0)'">
+                            📖 Second Semester 2025
+                        </a>
+                        <a href="{% url 'generate_semester_results' user.id %}?semester=first&year=2024" 
+                           style="background: white; color: #2e7d32; padding: 10px 14px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 500; text-align: center; border: 1px solid #e8f5e8; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 6px;"
+                           onmouseover="this.style.backgroundColor='#e8f5e8'; this.style.transform='translateY(-1px)'"
+                           onmouseout="this.style.backgroundColor='white'; this.style.transform='translateY(0)'">
+                            📚 First Semester 2024
+                        </a>
+                        <a href="{% url 'generate_semester_results' user.id %}?semester=second&year=2024" 
+                           style="background: white; color: #1976d2; padding: 10px 14px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 500; text-align: center; border: 1px solid #e3f2fd; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 6px;"
+                           onmouseover="this.style.backgroundColor='#e3f2fd'; this.style.transform='translateY(-1px)'"
+                           onmouseout="this.style.backgroundColor='white'; this.style.transform='translateY(0)'">
+                            📖 Second Semester 2024
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Academic Records Section -->
+                <div style="background: linear-gradient(135deg, #fff3e0, #f8f9fa); border-radius: 8px; padding: 16px; border-left: 3px solid #ff9800;">
+                    <div style="display: flex; align-items: center; margin-bottom: 12px;">
+                        <span style="background: #ff9800; color: white; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; margin-right: 10px;">📅</span>
+                        <h4 style="margin: 0; color: #f57c00; font-size: 14px; font-weight: 600;">Annual Academic Records</h4>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px;">
+                        <a href="{% url 'generate_academic_record' user.id %}?year=2025" 
+                           style="background: white; color: #f57c00; padding: 10px 14px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 500; text-align: center; border: 1px solid #fff3e0; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 6px;"
+                           onmouseover="this.style.backgroundColor='#fff3e0'; this.style.transform='translateY(-1px)'"
+                           onmouseout="this.style.backgroundColor='white'; this.style.transform='translateY(0)'">
+                            📆 Academic Year 2025
+                        </a>
+                        <a href="{% url 'generate_academic_record' user.id %}?year=2024" 
+                           style="background: white; color: #f57c00; padding: 10px 14px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 500; text-align: center; border: 1px solid #fff3e0; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 6px;"
+                           onmouseover="this.style.backgroundColor='#fff3e0'; this.style.transform='translateY(-1px)'"
+                           onmouseout="this.style.backgroundColor='white'; this.style.transform='translateY(0)'">
+                            📆 Academic Year 2024
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Official Transcript Section -->
+                <div style="background: linear-gradient(135deg, #f3e5f5, #f8f9fa); border-radius: 8px; padding: 16px; border-left: 3px solid #9c27b0;">
+                    <div style="display: flex; align-items: center; margin-bottom: 12px;">
+                        <span style="background: #9c27b0; color: white; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; margin-right: 10px;">🎓</span>
+                        <h4 style="margin: 0; color: #7b1fa2; font-size: 14px; font-weight: 600;">Official Transcripts</h4>
+                    </div>
+                    <a href="{% url 'generate_full_transcript' user.id %}" 
+                       style="background: linear-gradient(135deg, #9c27b0, #ba68c8); color: white; padding: 12px 16px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 600; text-align: center; border: none; transition: all 0.3s; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 2px 8px rgba(156, 39, 176, 0.3);"
+                       onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(156, 39, 176, 0.4)'"
+                       onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 8px rgba(156, 39, 176, 0.3)'">
+                        🎯 Complete Official Transcript
+                    </a>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card-actions" style="border-top: 1px solid #f0f0f0; padding-top: 15px; margin-top: 5px;">
+            <div style="background: #f8f9fa; padding: 10px; border-radius: 6px; text-align: center;">
+                <p style="margin: 0; color: #666; font-size: 12px;">
+                    💡 <strong>Tip:</strong> All documents are generated as PDF files and are digitally signed for authenticity
+                </p>
+            </div>
         </div>
     </div>
 
@@ -719,9 +793,7 @@
 
 <div style="margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 8px; text-align: center;">
     <p style="margin: 0; color: #666;">
-        Need help? <a href="#" style="color: #007bff; text-decoration: none;">Contact Support</a> | 
-        <a href="#" style="color: #007bff; text-decoration: none;">User Guide</a> | 
-        <a href="#" style="color: #007bff; text-decoration: none;">FAQ</a>
+        📚 Welcome to your Academic Dashboard - Your gateway to academic success!
     </p>
 </div>
 

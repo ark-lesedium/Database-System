@@ -1,15 +1,9 @@
 {% extends 'MainInterface/base.html' %}
 
 {% block title %}Academic Calendar{% endblock %}
-
-{% block header %}
-    <div style="display: flex; justify-content: space-between; align-items: center;">
-        <span>Academic Calendar</span>
-        <div>
-            <a href="{% url 'student_dashboard' %}" class="btn btn-secondary">Back to Dashboard</a>
-            <a href="{% url 'logout' %}" class="btn btn-danger">Logout</a>
-        </div>
-    </div>
+{% block header %}Academic Calendar{% endblock %}
+{% block nav_buttons %}
+    <a href="{% url 'student_dashboard' %}" class="nav-btn">Back to Dashboard</a>
 {% endblock %}
 
 {% block content %}

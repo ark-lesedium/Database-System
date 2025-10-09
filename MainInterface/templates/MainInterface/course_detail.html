@@ -2,18 +2,13 @@
 {% load course_filters %}
 
 {% block title %}{{ course.course_code }} - Course Details{% endblock %}
-{% block header %}
-    <div style="display: flex; justify-content: space-between; align-items: center;">
-        <span>Course Details</span>
-        <div>
-            {% if user.userprofile.user_type == 'student' %}
-                <a href="{% url 'enrolled_courses' %}" style="background-color: #6c757d; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px; margin-right: 10px;">Back to My Courses</a>
-            {% else %}
-                <a href="{% url 'browse_courses' %}" style="background-color: #6c757d; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px; margin-right: 10px;">Back to Browse</a>
-            {% endif %}
-            <a href="{% url 'logout' %}" style="background-color: #dc3545; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px;">Logout</a>
-        </div>
-    </div>
+{% block header %}Course Details{% endblock %}
+{% block nav_buttons %}
+    {% if user.userprofile.user_type == 'student' %}
+        <a href="{% url 'enrolled_courses' %}" class="nav-btn">Back to My Courses</a>
+    {% else %}
+        <a href="{% url 'browse_courses' %}" class="nav-btn">Back to Browse</a>
+    {% endif %}
 {% endblock %}
 
 {% block content %}

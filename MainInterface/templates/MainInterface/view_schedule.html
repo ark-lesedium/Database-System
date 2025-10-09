@@ -1,18 +1,14 @@
 {% extends 'MainInterface/base.html' %}
 
 {% block title %}Class Schedule - Database System{% endblock %}
-{% block header %}
-    <div style="display: flex; justify-content: space-between; align-items: center;">
-        <span>Class Schedule</span>
-        {% if user.userprofile.user_type == 'lecturer' %}
-            <div>
-                <a href="{% url 'manage_schedule' %}" style="background-color: #28a745; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px; margin-right: 10px;">Manage Schedule</a>
-                <a href="{% url 'logout' %}" style="background-color: #dc3545; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px;">Logout</a>
-            </div>
-        {% else %}
-            <a href="{% url 'logout' %}" style="background-color: #dc3545; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px;">Logout</a>
-        {% endif %}
-    </div>
+{% block header %}Class Schedule{% endblock %}
+{% block nav_buttons %}
+    {% if user.userprofile.user_type == 'lecturer' %}
+        <a href="{% url 'manage_schedule' %}" class="nav-btn" style="background-color: #28a745;">Manage Schedule</a>
+        <a href="{% url 'lecturer_dashboard' %}" class="nav-btn">Back to Dashboard</a>
+    {% else %}
+        <a href="{% url 'student_dashboard' %}" class="nav-btn">Back to Dashboard</a>
+    {% endif %}
 {% endblock %}
 
 {% block content %}

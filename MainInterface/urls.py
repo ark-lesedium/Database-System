@@ -76,6 +76,9 @@ urlpatterns = [
     # Academic Reports URLs
     path('academic-reports/', views.academic_reports_view, name='academic_reports'),
     path('academic-reports/generate/<int:student_id>/', views.generate_student_report, name='generate_student_report'),
+    path('academic-reports/semester-results/<int:student_id>/', views.generate_semester_results, name='generate_semester_results'),
+    path('academic-reports/academic-record/<int:student_id>/', views.generate_academic_record, name='generate_academic_record'),
+    path('academic-reports/full-transcript/<int:student_id>/', views.generate_full_transcript, name='generate_full_transcript'),
     
     # PDF Downloads
     path('download-progress-report/', views.download_progress_report, name='download_progress_report'),

@@ -1,20 +1,13 @@
 {% extends 'MainInterface/base.html' %}
 
 {% block title %}Academic Progress - Database System{% endblock %}
-{% block header %}
-    <div style="display: flex; justify-content: space-between; align-items: center;">
-        <span>Academic Progress</span>
-        <div style="display: flex; gap: 10px;">
-            <a href="{% url 'download_progress_report' %}" 
-               style="background-color: #28a745; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px; display: flex; align-items: center; gap: 5px;">
-                📄 Download Report
-            </a>
-            <a href="{% url 'student_dashboard' %}" 
-               style="background-color: #6c757d; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px;">
-                Back to Dashboard
-            </a>
-        </div>
-    </div>
+{% block header %}Academic Progress{% endblock %}
+{% block nav_buttons %}
+    <a href="{% url 'download_progress_report' %}" 
+       class="nav-btn" style="background-color: #28a745;">
+        📄 Download Report
+    </a>
+    <a href="{% url 'student_dashboard' %}" class="nav-btn">Back to Dashboard</a>
 {% endblock %}
 
 {% block content %}

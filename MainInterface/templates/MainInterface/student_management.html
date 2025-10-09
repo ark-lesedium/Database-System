@@ -1,14 +1,9 @@
 {% extends 'MainInterface/base.html' %}
 
 {% block title %}Student Management - Database System{% endblock %}
-{% block header %}
-    <div style="display: flex; justify-content: space-between; align-items: center;">
-        <span>Student Management</span>
-        <div>
-            <a href="{% url 'lecturer_dashboard' %}" class="btn btn-secondary">Back to Dashboard</a>
-            <a href="{% url 'logout' %}" class="btn btn-danger">Logout</a>
-        </div>
-    </div>
+{% block header %}Student Management{% endblock %}
+{% block nav_buttons %}
+    <a href="{% url 'lecturer_dashboard' %}" class="nav-btn">Back to Dashboard</a>
 {% endblock %}
 
 {% block content %}

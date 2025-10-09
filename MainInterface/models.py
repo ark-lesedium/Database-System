@@ -196,6 +196,7 @@ class Course(models.Model):
     credits = models.IntegerField(default=3)
     level = models.CharField(max_length=20, choices=LEVEL_CHOICES, default='undergraduate')
     semester = models.CharField(max_length=20, choices=SEMESTER_CHOICES, default='spring')
+    year = models.IntegerField(default=2025, help_text="Academic year")
     max_students = models.IntegerField(default=30)
     is_active = models.BooleanField(default=True)
     lecturer = models.ForeignKey(UserProfile, on_delete=models.CASCADE, 

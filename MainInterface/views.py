@@ -9,6 +9,7 @@ from django.utils import timezone
 from django.core.files.storage import default_storage
 from django.core.exceptions import ValidationError
 from .models import UserProfile, Course, Enrollment, Grade, Assignment, AssignmentSubmission, StudyMaterial, AcademicCalendar, Announcement, ClassSchedule
+from .decorators import secure_view, no_cache
 from reportlab.lib.pagesizes import letter, A4
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -21,6 +22,7 @@ import os
 
 # Create your views here.
 
+@no_cache
 def login_view(request):
     if request.user.is_authenticated:
         # Redirect to appropriate dashboard based on user type
@@ -45,6 +47,13 @@ def login_view(request):
             try:
                 if user.userprofile.user_type == user_type:
                     login(request, user)
+                    
+                    # Initialize session security
+                    request.session['login_time'] = timezone.now().timestamp()
+                    request.session['user_agent'] = request.META.get('HTTP_USER_AGENT', '')
+                    request.session['session_security_initialized'] = True
+                    request.session['last_activity'] = timezone.now().timestamp()
+                    
                     messages.success(request, f'Welcome {user.get_full_name() or user.username}!')
                     # Redirect based on user type
                     if user_type == 'student':
@@ -59,6 +68,13 @@ def login_view(request):
                 # Create profile if it doesn't exist
                 UserProfile.objects.create(user=user, user_type=user_type)
                 login(request, user)
+                
+                # Initialize session security
+                request.session['login_time'] = timezone.now().timestamp()
+                request.session['user_agent'] = request.META.get('HTTP_USER_AGENT', '')
+                request.session['session_security_initialized'] = True
+                request.session['last_activity'] = timezone.now().timestamp()
+                
                 messages.success(request, f'Welcome {user.get_full_name() or user.username}!')
                 # Redirect based on user type
                 if user_type == 'student':
@@ -116,7 +132,7 @@ def register_view(request):
     
     return render(request, 'MainInterface/register.html')
 
-@login_required
+@secure_view
 def dashboard_view(request):
     # Redirect students to student dashboard
     try:
@@ -129,7 +145,7 @@ def dashboard_view(request):
     
     return render(request, 'MainInterface/dashboard.html')
 
-@login_required
+@secure_view
 def student_dashboard_view(request):
     # Ensure only students can access this dashboard
     try:
@@ -272,7 +288,7 @@ def student_dashboard_view(request):
     
     return render(request, 'MainInterface/student_dashboard.html', context)
 
-@login_required
+@secure_view
 def lecturer_dashboard_view(request):
     # Ensure only lecturers can access this dashboard
     try:
@@ -283,21 +299,66 @@ def lecturer_dashboard_view(request):
         messages.error(request, 'User profile not found.')
         return redirect('dashboard')
     
+    # Get lecturer's profile
+    lecturer_profile = request.user.userprofile
+    
+    # Calculate statistics
+    # 1. Total courses taught by this lecturer
+    lecturer_courses = Course.objects.filter(lecturer=lecturer_profile, is_active=True)
+    total_courses = lecturer_courses.count()
+    
+    # 2. Total students enrolled in lecturer's courses
+    total_students = Enrollment.objects.filter(
+        course__in=lecturer_courses,
+        status='enrolled'
+    ).values('student').distinct().count()
+    
+    # 3. Pending assignment submissions that need grading
+    pending_submissions = AssignmentSubmission.objects.filter(
+        assignment__course__in=lecturer_courses,
+        status='submitted'
+    ).count()
+    
+    # 4. Upcoming classes for the next 7 days
+    from datetime import timedelta
+    today = timezone.now()
+    next_week = today + timedelta(days=7)
+    upcoming_classes = ClassSchedule.objects.filter(
+        lecturer=lecturer_profile,
+        start_datetime__gte=today,
+        start_datetime__lte=next_week
+    ).count()
+    
     # Context data for the lecturer dashboard
     context = {
         'user': request.user,
-        'total_courses': 0,  # Placeholder - will be populated when Course model is added
-        'total_students': 0,  # Placeholder - will be populated when enrollment data is available
-        'pending_submissions': 0,  # Placeholder - will be populated when Assignment model is added
-        'upcoming_classes': 0,  # Placeholder - will be calculated from schedule data
+        'total_courses': total_courses,
+        'total_students': total_students,
+        'pending_submissions': pending_submissions,
+        'upcoming_classes': upcoming_classes,
+        'courses': lecturer_courses,  # For weight management section
     }
     
     return render(request, 'MainInterface/lecturer_dashboard.html', context)
 
 def logout_view(request):
-    logout(request)
-    messages.success(request, 'You have been logged out successfully.')
-    return redirect('login')
+    """Enhanced logout view with proper session cleanup"""
+    if request.user.is_authenticated:
+        # Clear all session data
+        request.session.flush()
+        
+        # Logout the user
+        logout(request)
+        
+        messages.success(request, 'You have been logged out successfully.')
+    
+    # Prevent caching of logout page
+    response = redirect('login')
+    response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response['Pragma'] = 'no-cache'
+    response['Expires'] = '0'
+    
+    return response
 
 @login_required
 def profile_management_view(request):
@@ -3833,11 +3894,20 @@ def generate_student_report(request, student_id):
     # Student Information
     story.append(Paragraph("Student Information", heading_style))
     
+    # Calculate GPA for student information
+    student_gpa = None
+    if hasattr(student, 'userprofile'):
+        if selected_course:
+            student_gpa = student.userprofile.calculate_course_gpa(selected_course)
+        else:
+            student_gpa = student.userprofile.calculate_overall_gpa()
+    
     student_info = [
         ["Full Name:", student.get_full_name() or "N/A"],
         ["Username:", student.username],
         ["Email:", student.email],
         ["User ID:", str(student.id)],
+        ["GPA:", f"{student_gpa:.2f}" if student_gpa is not None else "Not Available"],
         ["Report Generated:", datetime.now().strftime("%B %d, %Y at %I:%M %p")],
         ["Generated By:", request.user.get_full_name() or request.user.username]
     ]
@@ -3933,7 +4003,15 @@ def generate_student_report(request, student_id):
                     grade_type='assignment'
                 ).first()
             
-            grade_display = f"{assignment_grade.grade_value}%" if assignment_grade else "Not Graded"
+            # Display both numeric score and letter grade if available
+            if assignment_grade:
+                if assignment_grade.numeric_score is not None:
+                    percentage = assignment_grade.get_percentage()
+                    grade_display = f"{percentage}% ({assignment_grade.grade_value})"
+                else:
+                    grade_display = assignment_grade.grade_value
+            else:
+                grade_display = "Not Graded"
             
             assignment_data.append([
                 assignment.title[:30] + "..." if len(assignment.title) > 30 else assignment.title,
@@ -3943,7 +4021,7 @@ def generate_student_report(request, student_id):
                 grade_display
             ])
         
-        assignment_table = Table(assignment_data, colWidths=[2*inch, 1.5*inch, 1*inch, 1.2*inch, 0.8*inch])
+        assignment_table = Table(assignment_data, colWidths=[2*inch, 1.5*inch, 1*inch, 1.2*inch, 1.2*inch])
         assignment_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
@@ -3958,6 +4036,60 @@ def generate_student_report(request, student_id):
         story.append(assignment_table)
         story.append(Spacer(1, 20))
     
+    # Test Performance (Quizzes, Midterms, Finals)
+    if selected_course:
+        test_grades = Grade.objects.filter(
+            student=student, 
+            course=selected_course,
+            grade_type__in=['quiz', 'midterm', 'final']
+        ).order_by('-date_graded')
+    else:
+        enrolled_courses = [enrollment.course for enrollment in enrollments]
+        test_grades = Grade.objects.filter(
+            student=student,
+            course__in=enrolled_courses,
+            grade_type__in=['quiz', 'midterm', 'final']
+        ).order_by('-date_graded')
+    
+    if test_grades.exists():
+        story.append(Paragraph("Test Performance", heading_style))
+        
+        test_data = [["Test/Exam", "Course", "Type", "Score", "Grade", "Date"]]
+        
+        for test_grade in test_grades[:15]:  # Limit to last 15 tests
+            test_name = test_grade.description if test_grade.description else f"{test_grade.get_grade_type_display()}"
+            
+            # Display both numeric score and letter grade if available
+            if test_grade.numeric_score is not None:
+                percentage = test_grade.get_percentage()
+                score_display = f"{percentage}%"
+            else:
+                score_display = "N/A"
+            
+            test_data.append([
+                test_name[:25] + "..." if len(test_name) > 25 else test_name,
+                test_grade.course.course_name[:20] + "..." if len(test_grade.course.course_name) > 20 else test_grade.course.course_name,
+                test_grade.get_grade_type_display(),
+                score_display,
+                test_grade.grade_value,
+                test_grade.date_graded.strftime("%m/%d/%Y")
+            ])
+        
+        test_table = Table(test_data, colWidths=[2*inch, 1.5*inch, 0.8*inch, 0.8*inch, 0.6*inch, 0.8*inch])
+        test_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ]))
+        
+        story.append(test_table)
+        story.append(Spacer(1, 20))
+    
     # Grade Summary
     if selected_course:
         grades = Grade.objects.filter(student=student, course=selected_course).order_by('-date_graded')
@@ -3967,33 +4099,67 @@ def generate_student_report(request, student_id):
     if grades.exists():
         story.append(Paragraph("Grade Summary", heading_style))
         
-        # Calculate average grade
-        total_grades = [grade.grade_value for grade in grades if grade.grade_value is not None]
-        if total_grades:
-            average_grade = sum(total_grades) / len(total_grades)
-            story.append(Paragraph(f"<b>Overall Average:</b> {average_grade:.2f}%", styles['Normal']))
+        # Calculate GPA and show statistics
+        if hasattr(student, 'userprofile'):
+            if selected_course:
+                course_gpa = student.userprofile.calculate_course_gpa(selected_course)
+                overall_gpa = student.userprofile.calculate_overall_gpa()
+                
+                if course_gpa is not None:
+                    story.append(Paragraph(f"<b>Course GPA:</b> {course_gpa:.2f}", styles['Normal']))
+                if overall_gpa is not None:
+                    story.append(Paragraph(f"<b>Overall GPA:</b> {overall_gpa:.2f}", styles['Normal']))
+            else:
+                overall_gpa = student.userprofile.calculate_overall_gpa()
+                if overall_gpa is not None:
+                    story.append(Paragraph(f"<b>Overall GPA:</b> {overall_gpa:.2f}", styles['Normal']))
+            
+            # GPA Status
+            gpa_status = student.userprofile.get_gpa_status()
+            story.append(Paragraph(f"<b>Academic Standing:</b> {gpa_status}", styles['Normal']))
             story.append(Spacer(1, 10))
         
-        # Recent grades table
-        grade_data = [["Course", "Assignment/Exam", "Grade", "Date Recorded"]]
+        # Calculate numeric average from graded assessments
+        numeric_grades = []
+        for grade in grades:
+            if grade.numeric_score is not None and grade.max_points > 0:
+                percentage = grade.get_percentage()
+                numeric_grades.append(percentage)
+        
+        if numeric_grades:
+            average_percentage = sum(numeric_grades) / len(numeric_grades)
+            story.append(Paragraph(f"<b>Average Score:</b> {average_percentage:.2f}%", styles['Normal']))
+            story.append(Spacer(1, 10))
+        
+        # Recent grades table with improved display
+        grade_data = [["Course", "Assessment", "Type", "Score", "Grade", "Date"]]
         
         for grade in grades[:15]:  # Last 15 grades
-            assignment_name = grade.description if grade.description else f"{grade.get_grade_type_display()}"
+            assessment_name = grade.description if grade.description else f"{grade.get_grade_type_display()}"
+            
+            # Display both numeric score and letter grade if available
+            if grade.numeric_score is not None:
+                percentage = grade.get_percentage()
+                score_display = f"{percentage}%"
+            else:
+                score_display = "N/A"
             
             grade_data.append([
-                grade.course.course_name[:25] + "..." if len(grade.course.course_name) > 25 else grade.course.course_name,
-                assignment_name[:30] + "..." if len(assignment_name) > 30 else assignment_name,
-                f"{grade.grade_value}%" if grade.grade_value is not None else "N/A",
+                grade.course.course_name[:20] + "..." if len(grade.course.course_name) > 20 else grade.course.course_name,
+                assessment_name[:25] + "..." if len(assessment_name) > 25 else assessment_name,
+                grade.get_grade_type_display(),
+                score_display,
+                grade.grade_value,
                 grade.date_graded.strftime("%m/%d/%Y")
             ])
         
-        grade_table = Table(grade_data, colWidths=[2*inch, 2.5*inch, 0.8*inch, 1*inch])
+        grade_table = Table(grade_data, colWidths=[1.5*inch, 2*inch, 0.8*inch, 0.8*inch, 0.6*inch, 0.8*inch])
         grade_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
             ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
             ('GRID', (0, 0), (-1, -1), 1, colors.black)
@@ -4005,6 +4171,262 @@ def generate_student_report(request, student_id):
     # Footer
     story.append(Spacer(1, 30))
     footer_text = f"Report generated on {datetime.now().strftime('%B %d, %Y')} by {request.user.get_full_name() or request.user.username}"
+    story.append(Paragraph(footer_text, styles['Normal']))
+    
+    # Build the PDF
+    doc.build(story)
+    
+    return response
+
+@login_required
+def generate_semester_results(request, student_id):
+    """
+    Generate semester results slip showing courses and marks for a specific semester
+    """
+    user_profile = request.user.userprofile
+    
+    # Allow lecturers, admins, and students (for their own records)
+    if user_profile.user_type not in ['lecturer', 'admin', 'student']:
+        messages.error(request, 'Access denied.')
+        return redirect('dashboard')
+    
+    # Get the student
+    try:
+        student = User.objects.get(id=student_id, userprofile__user_type='student')
+    except User.DoesNotExist:
+        messages.error(request, 'Student not found.')
+        return redirect('academic_reports' if user_profile.user_type in ['lecturer', 'admin'] else 'student_dashboard')
+    
+    # Students can only access their own records
+    if user_profile.user_type == 'student' and student.id != request.user.id:
+        messages.error(request, 'Access denied. You can only view your own academic records.')
+        return redirect('student_dashboard')
+    
+    # Get semester and year from query parameters
+    semester = request.GET.get('semester', 'spring')
+    year = request.GET.get('year', '2025')
+    
+    try:
+        year = int(year)
+    except ValueError:
+        year = 2025
+    
+    # Generate the report
+    from django.http import HttpResponse
+    from reportlab.lib.pagesizes import letter, A4
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import inch
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+    from datetime import datetime
+    
+    # Create the HttpResponse object with PDF headers
+    response = HttpResponse(content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="semester_results_{student.username}_{semester}_{year}.pdf"'
+    
+    # Create the PDF document
+    doc = SimpleDocTemplate(response, pagesize=A4, topMargin=1*inch)
+    styles = getSampleStyleSheet()
+    
+    # Custom styles
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=18,
+        spaceAfter=30,
+        alignment=TA_CENTER,
+        textColor=colors.darkblue
+    )
+    
+    heading_style = ParagraphStyle(
+        'CustomHeading',
+        parent=styles['Heading2'],
+        fontSize=14,
+        spaceAfter=12,
+        textColor=colors.darkblue
+    )
+    
+    # Story list to hold all elements
+    story = []
+    
+    # Report title
+    title = f"Semester Results Slip<br/>{semester.title()} {year}<br/>{student.get_full_name() or student.username}"
+    story.append(Paragraph(title, title_style))
+    story.append(Spacer(1, 20))
+    
+    # Student Information
+    story.append(Paragraph("Student Information", heading_style))
+    
+    student_info = [
+        ["Full Name:", student.get_full_name() or "N/A"],
+        ["Student ID:", student.username],
+        ["Email:", student.email],
+        ["Semester:", f"{semester.title()} {year}"],
+        ["Report Generated:", datetime.now().strftime("%B %d, %Y at %I:%M %p")],
+    ]
+    
+    info_table = Table(student_info, colWidths=[2*inch, 4*inch])
+    info_table.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+    ]))
+    
+    story.append(info_table)
+    story.append(Spacer(1, 20))
+    
+    # Get courses for the specified semester and year
+    semester_courses = Course.objects.filter(
+        semester=semester,
+        year=year,
+        enrollments__student=student,
+        enrollments__status='enrolled'
+    ).distinct()
+    
+    if semester_courses.exists():
+        story.append(Paragraph("Course Results", heading_style))
+        
+        course_data = [["Course Code", "Course Name", "Credits", "Final Grade", "GPA Points", "Status"]]
+        
+        total_credits = 0
+        total_grade_points = 0
+        
+        for course in semester_courses:
+            # Get final grade for this course
+            final_grade = Grade.objects.filter(
+                student=student,
+                course=course,
+                grade_type='final_grade'
+            ).first()
+            
+            # If no final grade, calculate from all grades
+            if not final_grade:
+                course_grades = Grade.objects.filter(
+                    student=student,
+                    course=course
+                ).exclude(grade_value__in=['I', 'W'])
+                
+                if course_grades.exists():
+                    # Calculate weighted average
+                    total_weighted = 0
+                    total_weight = 0
+                    for grade in course_grades:
+                        if grade.numeric_score:
+                            total_weighted += grade.get_percentage() * float(grade.weight)
+                            total_weight += float(grade.weight)
+                    
+                    if total_weight > 0:
+                        avg_percentage = total_weighted / total_weight
+                        # Convert to letter grade
+                        if avg_percentage >= 90:
+                            grade_value = 'A+'
+                        elif avg_percentage >= 85:
+                            grade_value = 'A'
+                        elif avg_percentage >= 80:
+                            grade_value = 'A-'
+                        elif avg_percentage >= 77:
+                            grade_value = 'B+'
+                        elif avg_percentage >= 73:
+                            grade_value = 'B'
+                        elif avg_percentage >= 70:
+                            grade_value = 'B-'
+                        elif avg_percentage >= 67:
+                            grade_value = 'C+'
+                        elif avg_percentage >= 63:
+                            grade_value = 'C'
+                        elif avg_percentage >= 60:
+                            grade_value = 'C-'
+                        elif avg_percentage >= 57:
+                            grade_value = 'D+'
+                        elif avg_percentage >= 53:
+                            grade_value = 'D'
+                        elif avg_percentage >= 50:
+                            grade_value = 'D-'
+                        else:
+                            grade_value = 'F'
+                    else:
+                        grade_value = 'I'
+                else:
+                    grade_value = 'I'
+            else:
+                grade_value = final_grade.grade_value
+            
+            # Get grade points
+            grade_points_map = {
+                'A+': 4.0, 'A': 4.0, 'A-': 3.7,
+                'B+': 3.3, 'B': 3.0, 'B-': 2.7,
+                'C+': 2.3, 'C': 2.0, 'C-': 1.7,
+                'D+': 1.3, 'D': 1.0, 'D-': 0.7,
+                'F': 0.0, 'I': 0.0, 'W': 0.0
+            }
+            
+            grade_points = grade_points_map.get(grade_value, 0.0)
+            status = "Pass" if grade_value not in ['F', 'I', 'W'] and grade_points >= 1.7 else "Fail"
+            
+            course_data.append([
+                course.course_code,
+                course.course_name[:30] + "..." if len(course.course_name) > 30 else course.course_name,
+                str(course.credits),
+                grade_value,
+                f"{grade_points:.1f}",
+                status
+            ])
+            
+            if grade_value not in ['I', 'W']:
+                total_credits += course.credits
+                total_grade_points += grade_points * course.credits
+        
+        # Calculate semester GPA
+        semester_gpa = total_grade_points / total_credits if total_credits > 0 else 0.0
+        
+        # Add summary row
+        course_data.append([
+            "", "SEMESTER TOTALS", str(total_credits), "", f"{semester_gpa:.2f}", ""
+        ])
+        
+        course_table = Table(course_data, colWidths=[1*inch, 2.5*inch, 0.8*inch, 0.8*inch, 0.8*inch, 0.8*inch])
+        course_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('BACKGROUND', (0, 1), (-2, -1), colors.beige),
+            ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),
+            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ]))
+        
+        story.append(course_table)
+        story.append(Spacer(1, 20))
+        
+        # Semester Summary
+        story.append(Paragraph("Semester Summary", heading_style))
+        summary_info = [
+            ["Total Credits Attempted:", str(total_credits)],
+            ["Total Credits Earned:", str(total_credits)],  # Assuming all passed for now
+            ["Semester GPA:", f"{semester_gpa:.2f}"],
+            ["Academic Standing:", "Good Standing" if semester_gpa >= 2.0 else "Academic Warning"]
+        ]
+        
+        summary_table = Table(summary_info, colWidths=[2.5*inch, 2*inch])
+        summary_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ]))
+        
+        story.append(summary_table)
+    else:
+        story.append(Paragraph("No courses found for the specified semester.", styles['Normal']))
+    
+    # Footer
+    story.append(Spacer(1, 30))
+    footer_text = f"Results slip generated on {datetime.now().strftime('%B %d, %Y')} by {request.user.get_full_name() or request.user.username}"
     story.append(Paragraph(footer_text, styles['Normal']))
     
     # Build the PDF
@@ -4345,3 +4767,547 @@ def weight_management_view(request, course_id):
     }
     
     return render(request, 'MainInterface/weight_management.html', context)
+
+@login_required
+def generate_academic_record(request, student_id):
+    """
+    Generate academic record for an entire academic year
+    """
+    user_profile = request.user.userprofile
+    
+    # Allow lecturers, admins, and students (for their own records)
+    if user_profile.user_type not in ['lecturer', 'admin', 'student']:
+        messages.error(request, 'Access denied.')
+        return redirect('dashboard')
+    
+    # Get the student
+    try:
+        student = User.objects.get(id=student_id, userprofile__user_type='student')
+    except User.DoesNotExist:
+        messages.error(request, 'Student not found.')
+        return redirect('academic_reports' if user_profile.user_type in ['lecturer', 'admin'] else 'student_dashboard')
+    
+    # Students can only access their own records
+    if user_profile.user_type == 'student' and student.id != request.user.id:
+        messages.error(request, 'Access denied. You can only view your own academic records.')
+        return redirect('student_dashboard')
+    
+    # Get academic year from query parameters
+    year = request.GET.get('year', '2025')
+    
+    try:
+        year = int(year)
+    except ValueError:
+        year = 2025
+    
+    # Generate the report
+    from django.http import HttpResponse
+    from reportlab.lib.pagesizes import letter, A4
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import inch
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+    from datetime import datetime
+    
+    # Create the HttpResponse object with PDF headers
+    response = HttpResponse(content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="academic_record_{student.username}_{year}.pdf"'
+    
+    # Create the PDF document
+    doc = SimpleDocTemplate(response, pagesize=A4, topMargin=1*inch)
+    styles = getSampleStyleSheet()
+    
+    # Custom styles
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=18,
+        spaceAfter=30,
+        alignment=TA_CENTER,
+        textColor=colors.darkblue
+    )
+    
+    heading_style = ParagraphStyle(
+        'CustomHeading',
+        parent=styles['Heading2'],
+        fontSize=14,
+        spaceAfter=12,
+        textColor=colors.darkblue
+    )
+    
+    # Story list to hold all elements
+    story = []
+    
+    # Report title
+    title = f"Academic Record<br/>Academic Year {year}<br/>{student.get_full_name() or student.username}"
+    story.append(Paragraph(title, title_style))
+    story.append(Spacer(1, 20))
+    
+    # Student Information
+    story.append(Paragraph("Student Information", heading_style))
+    
+    # Calculate overall GPA
+    overall_gpa = None
+    if hasattr(student, 'userprofile'):
+        overall_gpa = student.userprofile.calculate_overall_gpa()
+    
+    student_info = [
+        ["Full Name:", student.get_full_name() or "N/A"],
+        ["Student ID:", student.username],
+        ["Email:", student.email],
+        ["Academic Year:", str(year)],
+        ["Overall GPA:", f"{overall_gpa:.2f}" if overall_gpa else "Not Available"],
+        ["Report Generated:", datetime.now().strftime("%B %d, %Y at %I:%M %p")],
+    ]
+    
+    info_table = Table(student_info, colWidths=[2*inch, 4*inch])
+    info_table.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+    ]))
+    
+    story.append(info_table)
+    story.append(Spacer(1, 20))
+    
+    # Process each semester in the academic year
+    semesters = ['spring', 'summer', 'fall', 'winter']
+    yearly_credits = 0
+    yearly_grade_points = 0
+    
+    for semester in semesters:
+        semester_courses = Course.objects.filter(
+            semester=semester,
+            year=year,
+            enrollments__student=student,
+            enrollments__status='enrolled'
+        ).distinct()
+        
+        if semester_courses.exists():
+            story.append(Paragraph(f"{semester.title()} {year} Semester", heading_style))
+            
+            course_data = [["Course Code", "Course Name", "Credits", "Grade", "Points"]]
+            
+            semester_credits = 0
+            semester_grade_points = 0
+            
+            for course in semester_courses:
+                # Get final grade or calculate average
+                final_grade = Grade.objects.filter(
+                    student=student,
+                    course=course,
+                    grade_type='final_grade'
+                ).first()
+                
+                if not final_grade:
+                    course_grades = Grade.objects.filter(
+                        student=student,
+                        course=course
+                    ).exclude(grade_value__in=['I', 'W'])
+                    
+                    if course_grades.exists():
+                        total_weighted = 0
+                        total_weight = 0
+                        for grade in course_grades:
+                            if grade.numeric_score:
+                                total_weighted += grade.get_percentage() * float(grade.weight)
+                                total_weight += float(grade.weight)
+                        
+                        if total_weight > 0:
+                            avg_percentage = total_weighted / total_weight
+                            if avg_percentage >= 90:
+                                grade_value = 'A+'
+                            elif avg_percentage >= 85:
+                                grade_value = 'A'
+                            elif avg_percentage >= 80:
+                                grade_value = 'A-'
+                            elif avg_percentage >= 77:
+                                grade_value = 'B+'
+                            elif avg_percentage >= 73:
+                                grade_value = 'B'
+                            elif avg_percentage >= 70:
+                                grade_value = 'B-'
+                            elif avg_percentage >= 67:
+                                grade_value = 'C+'
+                            elif avg_percentage >= 63:
+                                grade_value = 'C'
+                            elif avg_percentage >= 60:
+                                grade_value = 'C-'
+                            elif avg_percentage >= 57:
+                                grade_value = 'D+'
+                            elif avg_percentage >= 53:
+                                grade_value = 'D'
+                            elif avg_percentage >= 50:
+                                grade_value = 'D-'
+                            else:
+                                grade_value = 'F'
+                        else:
+                            grade_value = 'I'
+                    else:
+                        grade_value = 'I'
+                else:
+                    grade_value = final_grade.grade_value
+                
+                # Get grade points
+                grade_points_map = {
+                    'A+': 4.0, 'A': 4.0, 'A-': 3.7,
+                    'B+': 3.3, 'B': 3.0, 'B-': 2.7,
+                    'C+': 2.3, 'C': 2.0, 'C-': 1.7,
+                    'D+': 1.3, 'D': 1.0, 'D-': 0.7,
+                    'F': 0.0, 'I': 0.0, 'W': 0.0
+                }
+                
+                grade_points = grade_points_map.get(grade_value, 0.0)
+                
+                course_data.append([
+                    course.course_code,
+                    course.course_name[:25] + "..." if len(course.course_name) > 25 else course.course_name,
+                    str(course.credits),
+                    grade_value,
+                    f"{grade_points:.1f}"
+                ])
+                
+                if grade_value not in ['I', 'W']:
+                    semester_credits += course.credits
+                    semester_grade_points += grade_points * course.credits
+            
+            # Calculate semester GPA
+            semester_gpa = semester_grade_points / semester_credits if semester_credits > 0 else 0.0
+            
+            # Add semester summary
+            course_data.append([
+                "", f"Semester GPA: {semester_gpa:.2f}", str(semester_credits), "", ""
+            ])
+            
+            course_table = Table(course_data, colWidths=[1*inch, 2.5*inch, 0.8*inch, 0.8*inch, 0.8*inch])
+            course_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                ('BACKGROUND', (0, 1), (-2, -1), colors.beige),
+                ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),
+                ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ]))
+            
+            story.append(course_table)
+            story.append(Spacer(1, 15))
+            
+            yearly_credits += semester_credits
+            yearly_grade_points += semester_grade_points
+    
+    # Academic Year Summary
+    if yearly_credits > 0:
+        yearly_gpa = yearly_grade_points / yearly_credits
+        
+        story.append(Paragraph("Academic Year Summary", heading_style))
+        year_summary = [
+            ["Total Credits for Year:", str(yearly_credits)],
+            ["Academic Year GPA:", f"{yearly_gpa:.2f}"],
+            ["Cumulative GPA:", f"{overall_gpa:.2f}" if overall_gpa else "N/A"],
+            ["Academic Standing:", "Good Standing" if yearly_gpa >= 2.0 else "Academic Warning"]
+        ]
+        
+        year_table = Table(year_summary, colWidths=[2.5*inch, 2*inch])
+        year_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ]))
+        
+        story.append(year_table)
+    
+    # Footer
+    story.append(Spacer(1, 30))
+    footer_text = f"Academic record generated on {datetime.now().strftime('%B %d, %Y')} by {request.user.get_full_name() or request.user.username}"
+    story.append(Paragraph(footer_text, styles['Normal']))
+    
+    # Build the PDF
+    doc.build(story)
+    
+    return response
+
+@login_required  
+def generate_full_transcript(request, student_id):
+    """
+    Generate full academic transcript for the entire program
+    """
+    user_profile = request.user.userprofile
+    
+    # Allow lecturers, admins, and students (for their own records)
+    if user_profile.user_type not in ['lecturer', 'admin', 'student']:
+        messages.error(request, 'Access denied.')
+        return redirect('dashboard')
+    
+    # Get the student
+    try:
+        student = User.objects.get(id=student_id, userprofile__user_type='student')
+    except User.DoesNotExist:
+        messages.error(request, 'Student not found.')
+        return redirect('academic_reports' if user_profile.user_type in ['lecturer', 'admin'] else 'student_dashboard')
+    
+    # Students can only access their own records
+    if user_profile.user_type == 'student' and student.id != request.user.id:
+        messages.error(request, 'Access denied. You can only view your own academic records.')
+        return redirect('student_dashboard')
+    
+    # Generate the report
+    from django.http import HttpResponse
+    from reportlab.lib.pagesizes import letter, A4
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import inch
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+    from datetime import datetime
+    
+    # Create the HttpResponse object with PDF headers
+    response = HttpResponse(content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="full_transcript_{student.username}_{datetime.now().strftime('%Y%m%d')}.pdf"'
+    
+    # Create the PDF document
+    doc = SimpleDocTemplate(response, pagesize=A4, topMargin=1*inch)
+    styles = getSampleStyleSheet()
+    
+    # Custom styles
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=20,
+        spaceAfter=30,
+        alignment=TA_CENTER,
+        textColor=colors.darkblue
+    )
+    
+    heading_style = ParagraphStyle(
+        'CustomHeading',
+        parent=styles['Heading2'],
+        fontSize=14,
+        spaceAfter=12,
+        textColor=colors.darkblue
+    )
+    
+    # Story list to hold all elements
+    story = []
+    
+    # Report title
+    title = f"OFFICIAL ACADEMIC TRANSCRIPT<br/>{student.get_full_name() or student.username}"
+    story.append(Paragraph(title, title_style))
+    story.append(Spacer(1, 20))
+    
+    # Student Information
+    story.append(Paragraph("Student Information", heading_style))
+    
+    # Calculate overall GPA
+    overall_gpa = None
+    if hasattr(student, 'userprofile'):
+        overall_gpa = student.userprofile.calculate_overall_gpa()
+    
+    # Get all enrollments to determine program duration
+    all_enrollments = Enrollment.objects.filter(student=student).select_related('course')
+    years = list(set([enrollment.course.year for enrollment in all_enrollments]))
+    years.sort()
+    
+    student_info = [
+        ["Full Name:", student.get_full_name() or "N/A"],
+        ["Student ID:", student.username],
+        ["Email:", student.email],
+        ["Program Duration:", f"{min(years) if years else 'N/A'} - {max(years) if years else 'N/A'}"],
+        ["Cumulative GPA:", f"{overall_gpa:.2f}" if overall_gpa else "Not Available"],
+        ["Academic Standing:", student.userprofile.get_gpa_status() if hasattr(student, 'userprofile') else "N/A"],
+        ["Transcript Generated:", datetime.now().strftime("%B %d, %Y at %I:%M %p")],
+    ]
+    
+    info_table = Table(student_info, colWidths=[2*inch, 4*inch])
+    info_table.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+    ]))
+    
+    story.append(info_table)
+    story.append(Spacer(1, 20))
+    
+    # Process all academic years
+    total_credits = 0
+    total_grade_points = 0
+    
+    for year in years:
+        story.append(Paragraph(f"Academic Year {year}", heading_style))
+        
+        # Process each semester in the year
+        semesters = ['spring', 'summer', 'fall', 'winter']
+        year_credits = 0
+        year_grade_points = 0
+        
+        for semester in semesters:
+            semester_courses = Course.objects.filter(
+                semester=semester,
+                year=year,
+                enrollments__student=student,
+                enrollments__status='enrolled'
+            ).distinct()
+            
+            if semester_courses.exists():
+                story.append(Paragraph(f"{semester.title()} {year}", styles['Heading3']))
+                
+                course_data = [["Course Code", "Course Title", "Credits", "Grade", "Points"]]
+                
+                semester_credits = 0
+                semester_grade_points = 0
+                
+                for course in semester_courses:
+                    # Get final grade or calculate average
+                    final_grade = Grade.objects.filter(
+                        student=student,
+                        course=course,
+                        grade_type='final_grade'
+                    ).first()
+                    
+                    if not final_grade:
+                        course_grades = Grade.objects.filter(
+                            student=student,
+                            course=course
+                        ).exclude(grade_value__in=['I', 'W'])
+                        
+                        if course_grades.exists():
+                            total_weighted = 0
+                            total_weight = 0
+                            for grade in course_grades:
+                                if grade.numeric_score:
+                                    total_weighted += grade.get_percentage() * float(grade.weight)
+                                    total_weight += float(grade.weight)
+                            
+                            if total_weight > 0:
+                                avg_percentage = total_weighted / total_weight
+                                if avg_percentage >= 90:
+                                    grade_value = 'A+'
+                                elif avg_percentage >= 85:
+                                    grade_value = 'A'
+                                elif avg_percentage >= 80:
+                                    grade_value = 'A-'
+                                elif avg_percentage >= 77:
+                                    grade_value = 'B+'
+                                elif avg_percentage >= 73:
+                                    grade_value = 'B'
+                                elif avg_percentage >= 70:
+                                    grade_value = 'B-'
+                                elif avg_percentage >= 67:
+                                    grade_value = 'C+'
+                                elif avg_percentage >= 63:
+                                    grade_value = 'C'
+                                elif avg_percentage >= 60:
+                                    grade_value = 'C-'
+                                elif avg_percentage >= 57:
+                                    grade_value = 'D+'
+                                elif avg_percentage >= 53:
+                                    grade_value = 'D'
+                                elif avg_percentage >= 50:
+                                    grade_value = 'D-'
+                                else:
+                                    grade_value = 'F'
+                            else:
+                                grade_value = 'I'
+                        else:
+                            grade_value = 'I'
+                    else:
+                        grade_value = final_grade.grade_value
+                    
+                    # Get grade points
+                    grade_points_map = {
+                        'A+': 4.0, 'A': 4.0, 'A-': 3.7,
+                        'B+': 3.3, 'B': 3.0, 'B-': 2.7,
+                        'C+': 2.3, 'C': 2.0, 'C-': 1.7,
+                        'D+': 1.3, 'D': 1.0, 'D-': 0.7,
+                        'F': 0.0, 'I': 0.0, 'W': 0.0
+                    }
+                    
+                    grade_points = grade_points_map.get(grade_value, 0.0)
+                    
+                    course_data.append([
+                        course.course_code,
+                        course.course_name[:30] + "..." if len(course.course_name) > 30 else course.course_name,
+                        str(course.credits),
+                        grade_value,
+                        f"{grade_points:.1f}"
+                    ])
+                    
+                    if grade_value not in ['I', 'W']:
+                        semester_credits += course.credits
+                        semester_grade_points += grade_points * course.credits
+                
+                # Add semester GPA
+                semester_gpa = semester_grade_points / semester_credits if semester_credits > 0 else 0.0
+                course_data.append([
+                    "", f"Semester GPA: {semester_gpa:.2f}", str(semester_credits), "", ""
+                ])
+                
+                course_table = Table(course_data, colWidths=[1*inch, 2.5*inch, 0.8*inch, 0.8*inch, 0.8*inch])
+                course_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, -1), 8),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                    ('BACKGROUND', (0, 1), (-2, -1), colors.beige),
+                    ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),
+                    ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+                    ('GRID', (0, 0), (-1, -1), 1, colors.black)
+                ]))
+                
+                story.append(course_table)
+                story.append(Spacer(1, 10))
+                
+                year_credits += semester_credits
+                year_grade_points += semester_grade_points
+        
+        # Add year summary
+        if year_credits > 0:
+            year_gpa = year_grade_points / year_credits
+            story.append(Paragraph(f"Year {year} Summary: {year_credits} credits, GPA: {year_gpa:.2f}", styles['Normal']))
+            story.append(Spacer(1, 15))
+            
+            total_credits += year_credits
+            total_grade_points += year_grade_points
+    
+    # Final Summary
+    if total_credits > 0:
+        cumulative_gpa = total_grade_points / total_credits
+        
+        story.append(Paragraph("TRANSCRIPT SUMMARY", heading_style))
+        final_summary = [
+            ["Total Credits Attempted:", str(total_credits)],
+            ["Total Credits Earned:", str(total_credits)],  # Assuming all passed
+            ["Cumulative GPA:", f"{cumulative_gpa:.2f}"],
+            ["Final Academic Standing:", student.userprofile.get_gpa_status() if hasattr(student, 'userprofile') else "N/A"],
+            ["Transcript Status:", "Official"]
+        ]
+        
+        final_table = Table(final_summary, colWidths=[2.5*inch, 2*inch])
+        final_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('BACKGROUND', (0, 0), (-1, -1), colors.lightgrey),
+        ]))
+        
+        story.append(final_table)
+    
+    # Footer
+    story.append(Spacer(1, 30))
+    footer_text = f"Official transcript issued on {datetime.now().strftime('%B %d, %Y')} by {request.user.get_full_name() or request.user.username}"
+    story.append(Paragraph(footer_text, styles['Normal']))
+    
+    # Build the PDF
+    doc.build(story)
+    
+    return response

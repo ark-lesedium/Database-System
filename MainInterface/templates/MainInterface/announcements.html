@@ -1,23 +1,17 @@
 {% extends 'MainInterface/base.html' %}
 
 {% block title %}Announcements{% endblock %}
-
-{% block header %}
-    <div style="display: flex; justify-content: space-between; align-items: center;">
-        <span>Announcements</span>
-        <div>
-            {% if user.userprofile.user_type == 'lecturer' %}
-                <a href="{% url 'manage_announcements' %}" class="btn btn-success">Manage Announcements</a>
-                <a href="{% url 'create_announcement' %}" class="btn btn-primary">Create Announcement</a>
-                <a href="{% url 'lecturer_dashboard' %}" class="btn btn-secondary">Back to Dashboard</a>
-            {% elif user.userprofile.user_type == 'student' %}
-                <a href="{% url 'student_dashboard' %}" class="btn btn-secondary">Back to Dashboard</a>
-            {% else %}
-                <a href="{% url 'dashboard' %}" class="btn btn-secondary">Back to Dashboard</a>
-            {% endif %}
-            <a href="{% url 'logout' %}" class="btn btn-danger">Logout</a>
-        </div>
-    </div>
+{% block header %}Announcements{% endblock %}
+{% block nav_buttons %}
+    {% if user.userprofile.user_type == 'lecturer' %}
+        <a href="{% url 'manage_announcements' %}" class="nav-btn" style="background-color: #28a745;">Manage Announcements</a>
+        <a href="{% url 'create_announcement' %}" class="nav-btn" style="background-color: #007bff;">Create Announcement</a>
+        <a href="{% url 'lecturer_dashboard' %}" class="nav-btn">Back to Dashboard</a>
+    {% elif user.userprofile.user_type == 'student' %}
+        <a href="{% url 'student_dashboard' %}" class="nav-btn">Back to Dashboard</a>
+    {% else %}
+        <a href="{% url 'dashboard' %}" class="nav-btn">Back to Dashboard</a>
+    {% endif %}
 {% endblock %}
 
 {% block content %}

@@ -1,20 +1,15 @@
 {% extends 'MainInterface/base.html' %}
 
 {% block title %}Profile Management - Database System{% endblock %}
-{% block header %}
-    <div style="display: flex; justify-content: space-between; align-items: center;">
-        <span>Profile Management</span>
-        <div>
-            {% if user.userprofile.user_type == 'student' %}
-                <a href="{% url 'student_dashboard' %}" style="background-color: #6c757d; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px; margin-right: 10px;">Back to Dashboard</a>
-            {% elif user.userprofile.user_type == 'lecturer' %}
-                <a href="{% url 'lecturer_dashboard' %}" style="background-color: #6c757d; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px; margin-right: 10px;">Back to Dashboard</a>
-            {% else %}
-                <a href="{% url 'dashboard' %}" style="background-color: #6c757d; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px; margin-right: 10px;">Back to Dashboard</a>
-            {% endif %}
-            <a href="{% url 'logout' %}" style="background-color: #dc3545; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px;">Logout</a>
-        </div>
-    </div>
+{% block header %}Profile Management{% endblock %}
+{% block nav_buttons %}
+    {% if user.userprofile.user_type == 'student' %}
+        <a href="{% url 'student_dashboard' %}" class="nav-btn">Back to Dashboard</a>
+    {% elif user.userprofile.user_type == 'lecturer' %}
+        <a href="{% url 'lecturer_dashboard' %}" class="nav-btn">Back to Dashboard</a>
+    {% else %}
+        <a href="{% url 'dashboard' %}" class="nav-btn">Back to Dashboard</a>
+    {% endif %}
 {% endblock %}
 
 {% block content %}

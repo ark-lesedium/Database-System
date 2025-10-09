@@ -1,11 +1,9 @@
 {% extends 'MainInterface/base.html' %}
 
 {% block title %}Assignment Submissions - Database System{% endblock %}
-{% block header %}
-    <div style="display: flex; justify-content: space-between; align-items: center;">
-        <span>Assignment Submissions</span>
-        <a href="{% url 'lecturer_assignments' %}" style="background-color: #6c757d; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px;">Back to Assignments</a>
-    </div>
+{% block header %}Assignment Submissions{% endblock %}
+{% block nav_buttons %}
+    <a href="{% url 'lecturer_assignments' %}" class="nav-btn">Back to Assignments</a>
 {% endblock %}
 
 {% block content %}

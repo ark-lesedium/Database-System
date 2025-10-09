@@ -1,14 +1,9 @@
 {% extends 'MainInterface/base.html' %}
 
 {% block title %}Add Course - Database System{% endblock %}
-{% block header %}
-    <div style="display: flex; justify-content: space-between; align-items: center;">
-        <span>Add New Course</span>
-        <div>
-            <a href="{% url 'manage_courses' %}" style="background-color: #6c757d; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px; margin-right: 10px;">Back to Courses</a>
-            <a href="{% url 'logout' %}" style="background-color: #dc3545; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px;">Logout</a>
-        </div>
-    </div>
+{% block header %}Add New Course{% endblock %}
+{% block nav_buttons %}
+    <a href="{% url 'manage_courses' %}" class="nav-btn">Back to Courses</a>
 {% endblock %}
 
 {% block content %}

@@ -1,11 +1,9 @@
 {% extends 'MainInterface/base.html' %}
 
 {% block title %}Lecturer Dashboard - Database System{% endblock %}
-{% block header %}
-    <div style="display: flex; justify-content: space-between; align-items: center; position: relative;">
-        <span>Lecturer Dashboard</span>
-        <a href="{% url 'logout' %}" style="background-color: #dc3545; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px; position: absolute; right: 0; top: 50%; transform: translateY(-50%);">Logout</a>
-    </div>
+{% block header %}Lecturer Dashboard{% endblock %}
+{% block nav_buttons %}
+    <!-- Additional nav buttons can go here if needed -->
 {% endblock %}
 
 {% block content %}
@@ -153,7 +151,7 @@
         border-left-color: #28a745;
     }
     
-    .assignments-badge, .grades-badge, .attendance-badge {
+    .assignments-badge, .grades-badge {
         border-left-color: #17a2b8;
     }
     
@@ -284,19 +282,6 @@
         <div class="card-actions">
             <a href="{% url 'view_schedule' %}" class="btn-primary">View Schedule</a>
             <a href="{% url 'manage_schedule' %}" class="btn-secondary">Manage Schedule</a>
-        </div>
-    </div>
-
-    <!-- Attendance Tracking -->
-    <div class="dashboard-card attendance-badge">
-        <div class="card-header">
-            <div class="card-icon">✅</div>
-            <h3 class="card-title">Attendance Tracking</h3>
-        </div>
-      
-        <div class="card-actions">
-            <a href="#" class="btn-primary">Record Attendance</a>
-            <a href="#" class="btn-secondary">Attendance Reports</a>
         </div>
     </div>
 

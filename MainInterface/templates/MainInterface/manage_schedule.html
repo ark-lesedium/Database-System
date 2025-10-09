@@ -1,14 +1,9 @@
 {% extends 'MainInterface/base.html' %}
 
 {% block title %}Manage Class Schedule - Database System{% endblock %}
-{% block header %}
-    <div style="display: flex; justify-content: space-between; align-items: center;">
-        <span>Manage Class Schedule</span>
-        <div>
-            <a href="{% url 'add_schedule_event' %}" style="background-color: #28a745; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px; margin-right: 10px;">Add New Event</a>
-            <a href="{% url 'logout' %}" style="background-color: #dc3545; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px;">Logout</a>
-        </div>
-    </div>
+{% block header %}Manage Class Schedule{% endblock %}
+{% block nav_buttons %}
+    <a href="{% url 'add_schedule_event' %}" class="nav-btn" style="background-color: #28a745;">Add New Event</a>
 {% endblock %}
 
 {% block content %}

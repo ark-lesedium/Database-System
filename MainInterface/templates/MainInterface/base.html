@@ -25,6 +25,48 @@
             padding: 1rem;
             text-align: center;
             box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            position: relative;
+        }
+        
+        .header-nav {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .logout-btn {
+            background-color: #dc3545;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 4px;
+            text-decoration: none;
+            font-size: 14px;
+            transition: background-color 0.2s;
+        }
+        
+        .logout-btn:hover {
+            background-color: #c82333;
+            color: white;
+            text-decoration: none;
+        }
+        
+        .nav-btn {
+            background-color: #6c757d;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 4px;
+            text-decoration: none;
+            font-size: 14px;
+            transition: background-color 0.2s;
+        }
+        
+        .nav-btn:hover {
+            background-color: #545b62;
+            color: white;
+            text-decoration: none;
         }
         
         .logo-container {
@@ -117,6 +159,16 @@
 </head>
 <body>
     <header class="header">
+        {% block navigation %}
+        {% if user.is_authenticated %}
+        <div class="header-nav">
+            {% block nav_buttons %}
+            {% endblock %}
+            <a href="{% url 'logout' %}" class="logout-btn">Logout</a>
+        </div>
+        {% endif %}
+        {% endblock %}
+        
         <div class="logo-container">
             <img src="{% static 'images/logo.png' %}" alt="RAGNAR UNIVERSITY" class="logo">
             <div>
@@ -142,5 +194,149 @@
             {% endblock %}
         </div>
     </div>
+
+    {% if user.is_authenticated %}
+    <!-- Session Timeout Warning System -->
+    <script>
+        // Session configuration
+        const SESSION_TIMEOUT = 1800000; // 30 minutes in milliseconds
+        const WARNING_TIME = 300000; // 5 minutes warning in milliseconds
+        const CHECK_INTERVAL = 60000; // Check every minute
+        
+        let sessionTimer;
+        let warningTimer;
+        let warningShown = false;
+        
+        // Reset session timers
+        function resetSessionTimer() {
+            clearTimeout(sessionTimer);
+            clearTimeout(warningTimer);
+            warningShown = false;
+            
+            // Hide any existing warning
+            const existingWarning = document.getElementById('session-warning');
+            if (existingWarning) {
+                existingWarning.remove();
+            }
+            
+            // Set warning timer (5 minutes before timeout)
+            warningTimer = setTimeout(showSessionWarning, SESSION_TIMEOUT - WARNING_TIME);
+            
+            // Set logout timer (30 minutes)
+            sessionTimer = setTimeout(forceLogout, SESSION_TIMEOUT);
+        }
+        
+        // Show session timeout warning
+        function showSessionWarning() {
+            if (warningShown) return;
+            warningShown = true;
+            
+            const warningDiv = document.createElement('div');
+            warningDiv.id = 'session-warning';
+            warningDiv.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: #ff6b6b;
+                color: white;
+                padding: 20px;
+                border-radius: 8px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                z-index: 10000;
+                max-width: 350px;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            `;
+            
+            warningDiv.innerHTML = `
+                <div style="font-weight: bold; margin-bottom: 10px;">⚠️ Session Expiring Soon</div>
+                <div style="margin-bottom: 15px;">Your session will expire in 5 minutes due to inactivity.</div>
+                <div style="display: flex; gap: 10px;">
+                    <button onclick="extendSession()" style="
+                        background: white; 
+                        color: #ff6b6b; 
+                        border: none; 
+                        padding: 8px 16px; 
+                        border-radius: 4px; 
+                        cursor: pointer;
+                        font-weight: bold;
+                    ">Stay Logged In</button>
+                    <button onclick="logoutNow()" style="
+                        background: transparent; 
+                        color: white; 
+                        border: 1px solid white; 
+                        padding: 8px 16px; 
+                        border-radius: 4px; 
+                        cursor: pointer;
+                    ">Logout Now</button>
+                </div>
+            `;
+            
+            document.body.appendChild(warningDiv);
+        }
+        
+        // Extend session by making a simple request
+        function extendSession() {
+            fetch('{% url "dashboard" %}', {
+                method: 'HEAD',
+                credentials: 'same-origin'
+            }).then(() => {
+                resetSessionTimer();
+                // Show success message
+                const warningDiv = document.getElementById('session-warning');
+                if (warningDiv) {
+                    warningDiv.style.background = '#28a745';
+                    warningDiv.innerHTML = `
+                        <div style="font-weight: bold;">✅ Session Extended</div>
+                        <div>Your session has been extended for another 30 minutes.</div>
+                    `;
+                    setTimeout(() => warningDiv.remove(), 3000);
+                }
+            }).catch(() => {
+                // If request fails, user might already be logged out
+                forceLogout();
+            });
+        }
+        
+        // Force logout
+        function forceLogout() {
+            alert('Your session has expired due to inactivity. You will be redirected to the login page.');
+            window.location.href = '{% url "logout" %}';
+        }
+        
+        // Logout immediately
+        function logoutNow() {
+            window.location.href = '{% url "logout" %}';
+        }
+        
+        // Reset timer on user activity
+        const activityEvents = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
+        
+        activityEvents.forEach(event => {
+            document.addEventListener(event, resetSessionTimer, true);
+        });
+        
+        // Initialize session timer
+        resetSessionTimer();
+        
+        // Prevent back button after logout
+        window.addEventListener('pageshow', function(event) {
+            if (event.persisted || (window.performance && window.performance.navigation.type === 2)) {
+                // Check if user is still authenticated
+                fetch('{% url "dashboard" %}', {
+                    method: 'HEAD',
+                    credentials: 'same-origin'
+                }).catch(() => {
+                    // If request fails, redirect to login
+                    window.location.href = '{% url "login" %}';
+                });
+            }
+        });
+        
+        // Prevent caching of authenticated pages
+        if (window.performance && window.performance.navigation.type === 2) {
+            window.location.reload();
+        }
+    </script>
+    {% endif %}
 </body>
 </html>

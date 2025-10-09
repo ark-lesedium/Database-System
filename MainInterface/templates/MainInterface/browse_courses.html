@@ -2,18 +2,13 @@
 {% load course_filters %}
 
 {% block title %}Browse Courses - Database System{% endblock %}
-{% block header %}
-    <div style="display: flex; justify-content: space-between; align-items: center;">
-        <span>Browse Courses</span>
-        <div>
-            {% if user.userprofile.user_type == 'student' %}
-                <a href="{% url 'student_dashboard' %}" style="background-color: #6c757d; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px; margin-right: 10px;">Back to Dashboard</a>
-            {% else %}
-                <a href="{% url 'dashboard' %}" style="background-color: #6c757d; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px; margin-right: 10px;">Back to Dashboard</a>
-            {% endif %}
-            <a href="{% url 'logout' %}" style="background-color: #dc3545; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px;">Logout</a>
-        </div>
-    </div>
+{% block header %}Browse Courses{% endblock %}
+{% block nav_buttons %}
+    {% if user.userprofile.user_type == 'student' %}
+        <a href="{% url 'student_dashboard' %}" class="nav-btn">Back to Dashboard</a>
+    {% else %}
+        <a href="{% url 'dashboard' %}" class="nav-btn">Back to Dashboard</a>
+    {% endif %}
 {% endblock %}
 
 {% block content %}

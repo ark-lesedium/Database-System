@@ -130,6 +130,166 @@
             margin-top: 1rem;
             width: 100%;
         }
+        
+        .document-grid {
+            grid-template-columns: 1fr !important;
+        }
+    }
+
+    /* Documents Section Styling */
+    .documents-section {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        border-radius: 12px;
+        padding: 20px;
+        border: 1px solid #dee2e6;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .documents-title {
+        color: #495057;
+        font-weight: 600;
+        margin-bottom: 20px;
+        text-align: center;
+        font-size: 16px;
+        border-bottom: 2px solid #dee2e6;
+        padding-bottom: 10px;
+    }
+
+    .document-category {
+        background: white;
+        border-radius: 10px;
+        padding: 15px;
+        border: 1px solid #e9ecef;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+    }
+
+    .category-header {
+        display: flex;
+        align-items: center;
+        margin-bottom: 12px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid #f0f0f0;
+    }
+
+    .category-icon {
+        font-size: 18px;
+        margin-right: 8px;
+        width: 24px;
+        text-align: center;
+    }
+
+    .category-title {
+        font-weight: 600;
+        color: #495057;
+        font-size: 14px;
+    }
+
+    .document-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 8px;
+    }
+
+    .document-link {
+        display: flex;
+        align-items: center;
+        padding: 10px 12px;
+        border-radius: 8px;
+        text-decoration: none;
+        font-size: 13px;
+        font-weight: 500;
+        transition: all 0.3s ease;
+        border: 1px solid transparent;
+        color: white;
+        text-align: center;
+        justify-content: center;
+        gap: 6px;
+    }
+
+    .document-link:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        text-decoration: none;
+        color: white;
+    }
+
+    .document-link i {
+        font-size: 12px;
+    }
+
+    /* Document Type Specific Colors */
+    .first-semester {
+        background: linear-gradient(135deg, #28a745, #20c997);
+        border-color: #28a745;
+    }
+
+    .first-semester:hover {
+        background: linear-gradient(135deg, #218838, #1ea085);
+        color: white;
+    }
+
+    .second-semester {
+        background: linear-gradient(135deg, #007bff, #0056b3);
+        border-color: #007bff;
+    }
+
+    .second-semester:hover {
+        background: linear-gradient(135deg, #0056b3, #004085);
+        color: white;
+    }
+
+    .annual-record {
+        background: linear-gradient(135deg, #fd7e14, #e55a4e);
+        border-color: #fd7e14;
+    }
+
+    .annual-record:hover {
+        background: linear-gradient(135deg, #e55a4e, #dc3545);
+        color: white;
+    }
+
+    .official-transcript {
+        background: linear-gradient(135deg, #6f42c1, #9c27b0);
+        border-color: #6f42c1;
+    }
+
+    .official-transcript:hover {
+        background: linear-gradient(135deg, #5a2d91, #7b1fa2);
+        color: white;
+    }
+
+    .course-report {
+        background: linear-gradient(135deg, #17a2b8, #138496);
+        border-color: #17a2b8;
+    }
+
+    .course-report:hover {
+        background: linear-gradient(135deg, #138496, #117a8b);
+        color: white;
+    }
+
+    /* Responsive adjustments */
+    @media (max-width: 576px) {
+        .documents-section {
+            padding: 15px;
+        }
+        
+        .document-category {
+            padding: 12px;
+        }
+        
+        .document-link {
+            padding: 8px 10px;
+            font-size: 12px;
+        }
+        
+        .category-title {
+            font-size: 13px;
+        }
+        
+        .documents-title {
+            font-size: 15px;
+        }
     }
 </style>
 <div class="container-fluid">
@@ -222,11 +382,74 @@
                                         </div>
                                     </div>
                                     
-                                    <div class="mt-3 text-center">
-                                        <a href="{% url 'generate_student_report' student.id %}?course_id={{ selected_course.id }}" 
-                                           class="btn generate-btn">
-                                            <i class="fas fa-file-pdf me-2"></i>Generate Report
-                                        </a>
+                                    <div class="mt-3">
+                                        <div class="documents-section">
+                                            <h6 class="documents-title">
+                                                <i class="fas fa-file-alt me-2"></i>Academic Documents
+                                            </h6>
+                                            
+                                            <!-- Semester Results -->
+                                            <div class="document-category mb-3">
+                                                <div class="category-header">
+                                                    <span class="category-icon">📊</span>
+                                                    <span class="category-title">Semester Results</span>
+                                                </div>
+                                                <div class="document-grid">
+                                                    <a href="{% url 'generate_semester_results' student.id %}?semester=first&year=2025" class="document-link first-semester">
+                                                        <i class="fas fa-book me-2"></i>
+                                                        <span>First Semester 2025</span>
+                                                    </a>
+                                                    <a href="{% url 'generate_semester_results' student.id %}?semester=second&year=2025" class="document-link second-semester">
+                                                        <i class="fas fa-book-open me-2"></i>
+                                                        <span>Second Semester 2025</span>
+                                                    </a>
+                                                    <a href="{% url 'generate_semester_results' student.id %}?semester=first&year=2024" class="document-link first-semester">
+                                                        <i class="fas fa-book me-2"></i>
+                                                        <span>First Semester 2024</span>
+                                                    </a>
+                                                    <a href="{% url 'generate_semester_results' student.id %}?semester=second&year=2024" class="document-link second-semester">
+                                                        <i class="fas fa-book-open me-2"></i>
+                                                        <span>Second Semester 2024</span>
+                                                    </a>
+                                                </div>
+                                            </div>
+
+                                            <!-- Annual Records -->
+                                            <div class="document-category mb-3">
+                                                <div class="category-header">
+                                                    <span class="category-icon">📅</span>
+                                                    <span class="category-title">Annual Records</span>
+                                                </div>
+                                                <div class="document-grid">
+                                                    <a href="{% url 'generate_academic_record' student.id %}?year=2025" class="document-link annual-record">
+                                                        <i class="fas fa-calendar me-2"></i>
+                                                        <span>Academic Year 2025</span>
+                                                    </a>
+                                                    <a href="{% url 'generate_academic_record' student.id %}?year=2024" class="document-link annual-record">
+                                                        <i class="fas fa-calendar me-2"></i>
+                                                        <span>Academic Year 2024</span>
+                                                    </a>
+                                                </div>
+                                            </div>
+
+                                            <!-- Official Documents -->
+                                            <div class="document-category">
+                                                <div class="category-header">
+                                                    <span class="category-icon">🎓</span>
+                                                    <span class="category-title">Official Documents</span>
+                                                </div>
+                                                <div class="document-grid">
+                                                    <a href="{% url 'generate_full_transcript' student.id %}" class="document-link official-transcript">
+                                                        <i class="fas fa-scroll me-2"></i>
+                                                        <span>Complete Official Transcript</span>
+                                                    </a>
+                                                    <a href="{% url 'generate_student_report' student.id %}?course_id={{ selected_course.id }}" class="document-link course-report">
+                                                        <i class="fas fa-chart-line me-2"></i>
+                                                        <span>Detailed Course Report</span>
+                                                    </a>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>

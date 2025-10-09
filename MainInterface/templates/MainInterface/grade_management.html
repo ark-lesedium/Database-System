@@ -1,14 +1,10 @@
 {% extends 'MainInterface/base.html' %}
 
 {% block title %}Grade Management - Database System{% endblock %}
-{% block header %}
-    <div style="display: flex; justify-content: space-between; align-items: center;">
-        <span>Grade Management</span>
-        <div>
-            <a href="{% url 'create_test' %}" style="background-color: #28a745; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px; margin-right: 10px;">Create New Test</a>
-            <a href="{% url 'lecturer_dashboard' %}" style="background-color: #6c757d; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px;">Back to Dashboard</a>
-        </div>
-    </div>
+{% block header %}Grade Management{% endblock %}
+{% block nav_buttons %}
+    <a href="{% url 'create_test' %}" class="nav-btn" style="background-color: #28a745;">Create New Test</a>
+    <a href="{% url 'lecturer_dashboard' %}" class="nav-btn">Back to Dashboard</a>
 {% endblock %}
 
 {% block content %}

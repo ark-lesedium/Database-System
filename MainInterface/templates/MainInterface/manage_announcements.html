@@ -1,16 +1,11 @@
 {% extends 'MainInterface/base.html' %}
 
 {% block title %}Manage Announcements - Database System{% endblock %}
-{% block header %}
-    <div style="display: flex; justify-content: space-between; align-items: center;">
-        <span>Manage Announcements</span>
-        <div>
-            <a href="{% url 'create_announcement' %}" style="background-color: #28a745; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px; margin-right: 10px;">Create New</a>
-            <a href="{% url 'announcements' %}" style="background-color: #007bff; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px; margin-right: 10px;">View All</a>
-            <a href="{% url 'lecturer_dashboard' %}" style="background-color: #6c757d; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px; margin-right: 10px;">Dashboard</a>
-            <a href="{% url 'logout' %}" style="background-color: #dc3545; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-size: 14px;">Logout</a>
-        </div>
-    </div>
+{% block header %}Manage Announcements{% endblock %}
+{% block nav_buttons %}
+    <a href="{% url 'create_announcement' %}" class="nav-btn" style="background-color: #28a745;">Create New</a>
+    <a href="{% url 'announcements' %}" class="nav-btn" style="background-color: #007bff;">View All</a>
+    <a href="{% url 'lecturer_dashboard' %}" class="nav-btn">Dashboard</a>
 {% endblock %}
 
 {% block content %}

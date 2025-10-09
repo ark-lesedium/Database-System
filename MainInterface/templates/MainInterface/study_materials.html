@@ -1,21 +1,15 @@
 {% extends 'MainInterface/base.html' %}
 
 {% block title %}Study Materials{% endblock %}
-
-{% block header %}
-    <div style="display: flex; justify-content: space-between; align-items: center;">
-        <span>Study Materials</span>
-        <div>
-            {% if user.userprofile.user_type == 'student' %}
-                <a href="{% url 'student_dashboard' %}" class="btn btn-secondary">Back to Dashboard</a>
-            {% elif user.userprofile.user_type == 'lecturer' %}
-                <a href="{% url 'lecturer_dashboard' %}" class="btn btn-secondary">Back to Dashboard</a>
-            {% else %}
-                <a href="{% url 'dashboard' %}" class="btn btn-secondary">Back to Dashboard</a>
-            {% endif %}
-            <a href="{% url 'logout' %}" class="btn btn-danger">Logout</a>
-        </div>
-    </div>
+{% block header %}Study Materials{% endblock %}
+{% block nav_buttons %}
+    {% if user.userprofile.user_type == 'student' %}
+        <a href="{% url 'student_dashboard' %}" class="nav-btn">Back to Dashboard</a>
+    {% elif user.userprofile.user_type == 'lecturer' %}
+        <a href="{% url 'lecturer_dashboard' %}" class="nav-btn">Back to Dashboard</a>
+    {% else %}
+        <a href="{% url 'dashboard' %}" class="nav-btn">Back to Dashboard</a>
+    {% endif %}
 {% endblock %}
 
 {% block content %}
