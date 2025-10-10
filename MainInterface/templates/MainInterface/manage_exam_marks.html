@@ -1,0 +1,354 @@
+{% extends 'MainInterface/base.html' %}
+
+{% block title %}Manage Exam Marks - Database System{% endblock %}
+{% block header %}Manage Exam Marks{% endblock %}
+{% block nav_buttons %}
+    <a href="{% url 'grade_management' %}" class="nav-btn">Back to Grade Management</a>
+{% endblock %}
+
+{% block content %}
+<style>
+    .exam-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+    
+    .course-selector {
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        margin-bottom: 30px;
+    }
+    
+    .students-table {
+        background: white;
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .table-header {
+        background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
+        color: white;
+        padding: 20px;
+        text-align: center;
+    }
+    
+    .table-content {
+        overflow-x: auto;
+    }
+    
+    .marks-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    
+    .marks-table th,
+    .marks-table td {
+        padding: 12px;
+        text-align: center;
+        border-bottom: 1px solid #e9ecef;
+    }
+    
+    .marks-table th {
+        background: #f8f9fa;
+        font-weight: 600;
+        color: #333;
+    }
+    
+    .marks-table tr:hover {
+        background: #f8f9fa;
+    }
+    
+    .exam-input {
+        width: 80px;
+        padding: 8px;
+        border: 2px solid #e9ecef;
+        border-radius: 4px;
+        text-align: center;
+        font-size: 14px;
+    }
+    
+    .exam-input:focus {
+        outline: none;
+        border-color: #17a2b8;
+    }
+    
+    .submit-btn {
+        background: #28a745;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+    }
+    
+    .submit-btn:hover {
+        background: #218838;
+    }
+    
+    .grade-badge {
+        padding: 4px 8px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: bold;
+    }
+    
+    .grade-a { background: #d4edda; color: #155724; }
+    .grade-b { background: #d1ecf1; color: #0c5460; }
+    .grade-c { background: #fff3cd; color: #856404; }
+    .grade-d { background: #f8d7da; color: #721c24; }
+    .grade-f { background: #f8d7da; color: #721c24; }
+    
+    .pass-status {
+        font-weight: bold;
+    }
+    
+    .pass-status.passing {
+        color: #28a745;
+    }
+    
+    .pass-status.failing {
+        color: #dc3545;
+    }
+    
+    .info-box {
+        background: #e3f2fd;
+        border-left: 4px solid #2196f3;
+        padding: 20px;
+        margin-bottom: 20px;
+        border-radius: 0 8px 8px 0;
+    }
+    
+    .info-box h4 {
+        margin: 0 0 10px 0;
+        color: #1976d2;
+    }
+    
+    .info-box p {
+        margin: 0;
+        color: #424242;
+    }
+    
+    .summary-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 15px;
+        margin-bottom: 20px;
+    }
+    
+    .stat-card {
+        background: white;
+        padding: 15px;
+        border-radius: 8px;
+        text-align: center;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .stat-number {
+        font-size: 24px;
+        font-weight: bold;
+        color: #17a2b8;
+        margin: 0;
+    }
+    
+    .stat-label {
+        color: #666;
+        font-size: 14px;
+        margin: 5px 0 0 0;
+    }
+</style>
+
+<div class="exam-container">
+    <!-- Course Selection -->
+    <div class="course-selector">
+        <h3 style="margin: 0 0 15px 0; color: #333;">Select Course</h3>
+        <form method="GET">
+            <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
+                <select name="course" required style="flex: 1; min-width: 200px; padding: 10px; border: 2px solid #e9ecef; border-radius: 6px;">
+                    <option value="">-- Select a Course --</option>
+                    {% for course in courses %}
+                        <option value="{{ course.id }}" {% if selected_course and course.id == selected_course.id %}selected{% endif %}>
+                            {{ course.course_code }} - {{ course.course_name }}
+                        </option>
+                    {% endfor %}
+                </select>
+                <button type="submit" style="background: #17a2b8; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer;">
+                    Load Students
+                </button>
+            </div>
+        </form>
+    </div>
+
+    {% if selected_course %}
+        <!-- Information Box -->
+        <div class="info-box">
+            <h4>📝 Exam Marks Management</h4>
+            <p><strong>Course:</strong> {{ selected_course.course_code }} - {{ selected_course.course_name }}</p>
+            <p><strong>Final Mark Calculation:</strong> CASS MARK (50%) + Exam Mark (50%)</p>
+            <p><strong>Note:</strong> CASS MARK is automatically calculated from assignments, quizzes, and other coursework. You only need to enter the Exam Mark.</p>
+        </div>
+
+        {% if students_data %}
+            <!-- Summary Statistics -->
+            <div class="summary-stats">
+                <div class="stat-card">
+                    <p class="stat-number">{{ students_data|length }}</p>
+                    <p class="stat-label">Total Students</p>
+                </div>
+                <div class="stat-card">
+                    <p class="stat-number">{{ students_data|length|floatformat:0 }}</p>
+                    <p class="stat-label">With CASS Marks</p>
+                </div>
+                <div class="stat-card">
+                    <p class="stat-number">{% for student in students_data %}{% if student.exam_mark %}{{ forloop.counter0|add:1 }}{% endif %}{% empty %}0{% endfor %}</p>
+                    <p class="stat-label">Exam Marks Entered</p>
+                </div>
+                <div class="stat-card">
+                    <p class="stat-number">{% for student in students_data %}{% if student.is_passing %}{{ forloop.counter0|add:1 }}{% endif %}{% empty %}0{% endfor %}</p>
+                    <p class="stat-label">Currently Passing</p>
+                </div>
+            </div>
+
+            <!-- Students Table -->
+            <div class="students-table">
+                <div class="table-header">
+                    <h3 style="margin: 0;">Student Exam Marks & Final Grades</h3>
+                </div>
+                <div class="table-content">
+                    <table class="marks-table">
+                        <thead>
+                            <tr>
+                                <th>Student</th>
+                                <th>Student ID</th>
+                                <th>CASS MARK<br><small>(50% weight)</small></th>
+                                <th>Exam Mark<br><small>(50% weight)</small></th>
+                                <th>Final Mark</th>
+                                <th>Letter Grade</th>
+                                <th>Status</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for student_data in students_data %}
+                                <tr>
+                                    <td style="text-align: left;">
+                                        <strong>{{ student_data.student.get_full_name|default:student_data.student.username }}</strong>
+                                    </td>
+                                    <td>{{ student_data.student.username }}</td>
+                                    <td>
+                                        {% if student_data.cass_mark %}
+                                            <strong style="color: #17a2b8;">{{ student_data.cass_mark }}%</strong>
+                                        {% else %}
+                                            <span style="color: #6c757d;">Not Available</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <form method="POST" style="display: inline-block;">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="student_id" value="{{ student_data.student.id }}">
+                                            <div style="display: flex; gap: 5px; align-items: center; justify-content: center;">
+                                                <input 
+                                                    type="number" 
+                                                    name="exam_score" 
+                                                    class="exam-input"
+                                                    min="0" 
+                                                    max="100" 
+                                                    step="0.1"
+                                                    value="{% if student_data.exam_mark %}{{ student_data.exam_mark }}{% endif %}"
+                                                    placeholder="0-100"
+                                                    required
+                                                >
+                                                <button type="submit" class="submit-btn">Save</button>
+                                            </div>
+                                        </form>
+                                    </td>
+                                    <td>
+                                        {% if student_data.final_mark %}
+                                            <strong style="color: #28a745;">{{ student_data.final_mark }}%</strong>
+                                        {% else %}
+                                            <span style="color: #6c757d;">-</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if student_data.letter_grade %}
+                                            <span class="grade-badge grade-{{ student_data.letter_grade|first|lower }}">
+                                                {{ student_data.letter_grade }}
+                                            </span>
+                                        {% else %}
+                                            <span style="color: #6c757d;">-</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if student_data.final_mark %}
+                                            <span class="pass-status {% if student_data.is_passing %}passing{% else %}failing{% endif %}">
+                                                {% if student_data.is_passing %}✓ PASS{% else %}✗ FAIL{% endif %}
+                                            </span>
+                                        {% else %}
+                                            <span style="color: #6c757d;">Pending</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if student_data.exam_grade_id %}
+                                            <small style="color: #28a745;">✓ Saved</small>
+                                        {% else %}
+                                            <small style="color: #ffc107;">Pending</small>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        {% else %}
+            <div style="background: white; padding: 40px; text-align: center; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                <h3 style="color: #666; margin: 0 0 10px 0;">No Students Found</h3>
+                <p style="color: #999; margin: 0;">This course has no enrolled students or students with coursework grades.</p>
+            </div>
+        {% endif %}
+    {% else %}
+        <div style="background: white; padding: 40px; text-align: center; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+            <h3 style="color: #666; margin: 0 0 10px 0;">Select a Course</h3>
+            <p style="color: #999; margin: 0;">Choose a course from the dropdown above to manage exam marks for enrolled students.</p>
+        </div>
+    {% endif %}
+</div>
+
+<script>
+    // Auto-submit form when exam score is entered and user presses Enter
+    document.querySelectorAll('.exam-input').forEach(input => {
+        input.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                this.closest('form').submit();
+            }
+        });
+        
+        // Validate input range
+        input.addEventListener('input', function() {
+            const value = parseFloat(this.value);
+            if (value < 0) this.value = 0;
+            if (value > 100) this.value = 100;
+        });
+    });
+    
+    // Show confirmation for grade submission
+    document.querySelectorAll('form').forEach(form => {
+        if (form.querySelector('.exam-input')) {
+            form.addEventListener('submit', function(e) {
+                const studentName = this.closest('tr').querySelector('strong').textContent;
+                const examScore = this.querySelector('.exam-input').value;
+                
+                if (!confirm(`Save exam mark of ${examScore}% for ${studentName}?`)) {
+                    e.preventDefault();
+                }
+            });
+        }
+    });
+</script>
+
+{% endblock %}

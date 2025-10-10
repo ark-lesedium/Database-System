@@ -59,6 +59,7 @@ urlpatterns = [
     path('lecturer/grades/course/<int:course_id>/', views.grade_test_view, name='grade_test'),
     path('lecturer/grades/weights/<int:course_id>/', views.weight_management_view, name='weight_management'),
     path('lecturer/submissions/<int:submission_id>/grade/', views.grade_submission_view, name='grade_submission'),
+    path('lecturer/grades/exam-marks/', views.manage_exam_marks, name='manage_exam_marks'),
     
     # Class Schedule URLs
     path('schedule/', views.view_schedule_view, name='view_schedule'),

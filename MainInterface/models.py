@@ -332,6 +332,120 @@ class Course(models.Model):
             'grade_distribution': grade_dist,
         }
     
+    def calculate_cass_mark(self, student):
+        """Calculate CASS MARK (Continuous Assessment) for a student"""
+        # Get all grades except exam_mark and final_grade
+        cass_grades = Grade.objects.filter(
+            student=student,
+            course=self
+        ).exclude(grade_type__in=['exam_mark', 'final_grade', 'cass_mark'])
+        
+        if not cass_grades.exists():
+            return None
+        
+        total_weighted = 0
+        total_weight = 0
+        
+        for grade in cass_grades:
+            if grade.numeric_score is not None:
+                percentage = grade.get_percentage()
+                if percentage is not None:
+                    total_weighted += percentage * float(grade.weight)
+                    total_weight += float(grade.weight)
+        
+        if total_weight > 0:
+            cass_percentage = total_weighted / total_weight
+            return round(cass_percentage, 2)
+        
+        return None
+    
+    def calculate_final_mark(self, student):
+        """Calculate final mark combining CASS MARK (50%) and Exam Mark (50%)"""
+        # Get or calculate CASS MARK
+        cass_grade = Grade.objects.filter(
+            student=student,
+            course=self,
+            grade_type='cass_mark'
+        ).first()
+        
+        if cass_grade and cass_grade.numeric_score:
+            cass_mark = cass_grade.get_percentage()
+        else:
+            cass_mark = self.calculate_cass_mark(student)
+        
+        # Get Exam Mark
+        exam_grade = Grade.objects.filter(
+            student=student,
+            course=self,
+            grade_type='exam_mark'
+        ).first()
+        
+        if not exam_grade or exam_grade.numeric_score is None:
+            return None, cass_mark, None
+        
+        exam_mark = exam_grade.get_percentage()
+        
+        if cass_mark is not None and exam_mark is not None:
+            # 50% CASS + 50% Exam
+            final_percentage = (cass_mark * 0.5) + (exam_mark * 0.5)
+            return round(final_percentage, 2), cass_mark, exam_mark
+        
+        return None, cass_mark, exam_mark
+    
+    def get_final_mark_details(self, student):
+        """Get comprehensive final mark details for a student"""
+        final_mark, cass_mark, exam_mark = self.calculate_final_mark(student)
+        
+        # Convert final percentage to letter grade
+        letter_grade = None
+        if final_mark is not None:
+            if final_mark >= 90:
+                letter_grade = 'A+'
+            elif final_mark >= 85:
+                letter_grade = 'A'
+            elif final_mark >= 80:
+                letter_grade = 'A-'
+            elif final_mark >= 77:
+                letter_grade = 'B+'
+            elif final_mark >= 73:
+                letter_grade = 'B'
+            elif final_mark >= 70:
+                letter_grade = 'B-'
+            elif final_mark >= 67:
+                letter_grade = 'C+'
+            elif final_mark >= 63:
+                letter_grade = 'C'
+            elif final_mark >= 60:
+                letter_grade = 'C-'
+            elif final_mark >= 57:
+                letter_grade = 'D+'
+            elif final_mark >= 53:
+                letter_grade = 'D'
+            elif final_mark >= 50:
+                letter_grade = 'D-'
+            else:
+                letter_grade = 'F'
+        
+        # Get GPA points
+        grade_points_map = {
+            'A+': 4.0, 'A': 4.0, 'A-': 3.7,
+            'B+': 3.3, 'B': 3.0, 'B-': 2.7,
+            'C+': 2.3, 'C': 2.0, 'C-': 1.7,
+            'D+': 1.3, 'D': 1.0, 'D-': 0.7,
+            'F': 0.0
+        }
+        
+        gpa_points = grade_points_map.get(letter_grade, 0.0) if letter_grade else None
+        
+        return {
+            'final_mark': final_mark,
+            'cass_mark': cass_mark,
+            'exam_mark': exam_mark,
+            'letter_grade': letter_grade,
+            'gpa_points': gpa_points,
+            'is_passing': final_mark >= 50 if final_mark is not None else False
+        }
+    
     class Meta:
         ordering = ['course_code']
 
@@ -397,6 +511,8 @@ class Grade(models.Model):
         ('final', 'Final Exam'),
         ('project', 'Project'),
         ('participation', 'Participation'),
+        ('cass_mark', 'CASS MARK'),
+        ('exam_mark', 'Exam Mark'),
         ('final_grade', 'Final Course Grade'),
     ]
     

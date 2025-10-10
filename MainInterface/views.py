@@ -156,11 +156,34 @@ def student_dashboard_view(request):
         messages.error(request, 'User profile not found.')
         return redirect('dashboard')
     
-    # Get student's enrolled courses
+    # Get student's enrolled courses with exam marks
     enrolled_courses = Course.objects.filter(
         enrollments__student=request.user,
         enrollments__status='enrolled'
     )
+    
+    # Attach final mark data to courses for template access
+    for course in enrolled_courses:
+        # Get exam mark
+        exam_grade = Grade.objects.filter(
+            student=request.user,
+            course=course,
+            grade_type='exam_mark'
+        ).first()
+        course.student_exam_mark = exam_grade.numeric_score if exam_grade else None
+        
+        # Calculate CASS mark
+        course.student_cass_mark = course.calculate_cass_mark(request.user)
+        
+        # Calculate final mark
+        course.student_final_mark = course.calculate_final_mark(request.user)
+        
+        # Get final mark details
+        final_details = course.get_final_mark_details(request.user)
+        course.student_letter_grade = final_details.get('letter_grade')
+        course.student_is_passing = final_details.get('is_passing')
+        course.student_gpa_points = final_details.get('gpa_points')
+    
     enrolled_courses_count = enrolled_courses.count()
     
     # Get assignments for enrolled courses
@@ -202,15 +225,23 @@ def student_dashboard_view(request):
     current_semester = 'fall'  # You can get this dynamically
     semester_gpa = user_profile.get_semester_gpa(current_semester)
     
-    # Get course-specific GPAs
+    # Get course-specific GPAs and exam marks
     course_gpas = {}
     for course in enrolled_courses:
         course_gpa = user_profile.calculate_course_gpa(course)
+        # Get exam mark for this course
+        exam_grade = Grade.objects.filter(
+            student=request.user,
+            course=course,
+            grade_type='exam_mark'
+        ).first()
+        
         if course_gpa is not None:
             course_gpas[course.id] = {
                 'gpa': course_gpa,
                 'course': course,
-                'weights': course.get_assessment_weights()
+                'weights': course.get_assessment_weights(),
+                'exam_mark': exam_grade.numeric_score if exam_grade else None
             }
     
     # Get detailed grade statistics
@@ -269,6 +300,7 @@ def student_dashboard_view(request):
     # Context data for the student dashboard
     context = {
         'user': request.user,
+        'enrolled_courses': enrolled_courses,  # Add enrolled courses for Final Marks tab
         'enrolled_courses_count': enrolled_courses_count,
         'current_gpa': current_gpa or 'N/A',
         'gpa_status': gpa_status,
@@ -4203,13 +4235,33 @@ def generate_semester_results(request, student_id):
         return redirect('student_dashboard')
     
     # Get semester and year from query parameters
-    semester = request.GET.get('semester', 'spring')
+    semester = request.GET.get('semester', 'first')
     year = request.GET.get('year', '2025')
     
     try:
         year = int(year)
     except ValueError:
         year = 2025
+    
+    # Map semester parameter to database values
+    semester_mapping = {
+        'first': '1',      # First semester maps to '1' in database
+        'second': '2',     # Second semester maps to '2' in database  
+        '1': '1',
+        '2': '2',
+        '3': '3',          # Summer session
+        'spring': '1',     # Spring = First semester
+        'fall': '2',       # Fall = Second semester
+        'summer': '3',     # Summer session
+        'winter': '2'      # Winter = Second semester
+    }
+    
+    # Get the database semester value
+    db_semester = semester_mapping.get(semester.lower(), '1')
+    display_semester = 'First Semester' if semester.lower() in ['first', '1', 'spring'] else \
+                      'Second Semester' if semester.lower() in ['second', '2', 'fall', 'winter'] else \
+                      'Summer Session' if semester.lower() in ['summer', '3'] else \
+                      semester.title()
     
     # Generate the report
     from django.http import HttpResponse
@@ -4251,7 +4303,7 @@ def generate_semester_results(request, student_id):
     story = []
     
     # Report title
-    title = f"Semester Results Slip<br/>{semester.title()} {year}<br/>{student.get_full_name() or student.username}"
+    title = f"Semester Results Slip<br/>{display_semester} {year}<br/>{student.get_full_name() or student.username}"
     story.append(Paragraph(title, title_style))
     story.append(Spacer(1, 20))
     
@@ -4262,7 +4314,7 @@ def generate_semester_results(request, student_id):
         ["Full Name:", student.get_full_name() or "N/A"],
         ["Student ID:", student.username],
         ["Email:", student.email],
-        ["Semester:", f"{semester.title()} {year}"],
+        ["Semester:", f"{display_semester} {year}"],
         ["Report Generated:", datetime.now().strftime("%B %d, %Y at %I:%M %p")],
     ]
     
@@ -4279,79 +4331,450 @@ def generate_semester_results(request, student_id):
     
     # Get courses for the specified semester and year
     semester_courses = Course.objects.filter(
-        semester=semester,
+        semester=db_semester,
         year=year,
         enrollments__student=student,
         enrollments__status='enrolled'
     ).distinct()
     
     if semester_courses.exists():
-        story.append(Paragraph("Course Results", heading_style))
-        
-        course_data = [["Course Code", "Course Name", "Credits", "Final Grade", "GPA Points", "Status"]]
-        
-        total_credits = 0
-        total_grade_points = 0
+        story.append(Paragraph("Module Results & Assessment Breakdown", heading_style))
         
         for course in semester_courses:
-            # Get final grade for this course
+            # Enhanced Course header with more details
+            course_header = ParagraphStyle(
+                'CourseHeader',
+                parent=styles['Heading3'],
+                fontSize=12,
+                spaceAfter=8,
+                textColor=colors.darkblue,
+                leftIndent=0
+            )
+            
+            # Add course description and semester info
+            course_info = f"{course.course_code} - {course.course_name}"
+            course_details = f"Credits: {course.credits} | Level: {course.get_level_display()} | Semester: {display_semester} {year}"
+            
+            story.append(Paragraph(course_info, course_header))
+            story.append(Paragraph(course_details, styles['Normal']))
+            story.append(Spacer(1, 8))
+            
+            # Get all grades for this course (excluding exam and final grades)
+            course_grades = Grade.objects.filter(
+                student=student,
+                course=course
+            ).exclude(grade_type__in=['final_grade', 'exam_mark']).order_by('date_graded')
+            
+            # Get CASS and Exam marks separately
+            cass_mark = Grade.objects.filter(
+                student=student,
+                course=course,
+                grade_type='cass_mark'
+            ).first()
+            
+            exam_mark = Grade.objects.filter(
+                student=student,
+                course=course,
+                grade_type='exam_mark'
+            ).first()
+            
+            # Assessment breakdown section
+            if course_grades.exists():
+                story.append(Paragraph("Assessment Breakdown (CASS Components)", ParagraphStyle(
+                    'SubHeading',
+                    parent=styles['Heading4'],
+                    fontSize=11,
+                    spaceAfter=6,
+                    textColor=colors.darkgreen
+                )))
+                
+                # Create detailed marks table with enhanced formatting
+                marks_data = [["Assessment Type", "Description", "Score", "Max Points", "Percentage", "Weight", "Contribution"]]
+                
+                total_weighted = 0
+                total_weight = 0
+                assessment_count = 0
+                
+                # Group assessments by type for better organization
+                assessment_types = {}
+                for grade in course_grades:
+                    grade_type = grade.get_grade_type_display()
+                    if grade_type not in assessment_types:
+                        assessment_types[grade_type] = []
+                    assessment_types[grade_type].append(grade)
+                
+                for assessment_type, grades in assessment_types.items():
+                    type_total_weighted = 0
+                    type_total_weight = 0
+                    
+                    for i, grade in enumerate(grades):
+                        if grade.numeric_score is not None:
+                            percentage = (float(grade.numeric_score) / float(grade.max_points)) * 100
+                            weight_decimal = float(grade.weight)
+                            weighted_contribution = percentage * weight_decimal
+                            total_weighted += weighted_contribution
+                            total_weight += weight_decimal
+                            type_total_weighted += weighted_contribution
+                            type_total_weight += weight_decimal
+                            assessment_count += 1
+                            
+                            # Format assessment name
+                            assessment_name = grade.description or f"{assessment_type} {i+1}"
+                            if len(assessment_name) > 25:
+                                assessment_name = assessment_name[:22] + "..."
+                            
+                            marks_data.append([
+                                f"{assessment_type}",
+                                f"{assessment_name}",
+                                f"{grade.numeric_score}",
+                                f"{grade.max_points}",
+                                f"{percentage:.1f}%",
+                                f"{weight_decimal*100:.0f}%",
+                                f"{weighted_contribution:.1f}"
+                            ])
+                        else:
+                            # Handle ungraded assessments
+                            assessment_name = grade.description or f"{assessment_type} {i+1}"
+                            if len(assessment_name) > 25:
+                                assessment_name = assessment_name[:22] + "..."
+                            
+                            marks_data.append([
+                                f"{assessment_type}",
+                                f"{assessment_name}",
+                                "Not Graded",
+                                f"{grade.max_points}",
+                                "N/A",
+                                f"{float(grade.weight)*100:.0f}%",
+                                "0.0"
+                            ])
+                    
+                    # Add subtotal for each assessment type if multiple
+                    if len(grades) > 1:
+                        marks_data.append([
+                            "",
+                            f"→ {assessment_type} Subtotal",
+                            "",
+                            "",
+                            f"{(type_total_weighted/type_total_weight) if type_total_weight > 0 else 0:.1f}%",
+                            f"{type_total_weight*100:.0f}%",
+                            f"{type_total_weighted:.1f}"
+                        ])
+                
+                # Calculate CASS Mark (Continuous Assessment)
+                cass_percentage = total_weighted / total_weight if total_weight > 0 else 0
+                
+                # Add CASS summary row
+                marks_data.append([
+                    "CASS TOTAL",
+                    "",
+                    "",
+                    f"{cass_percentage:.1f}%",
+                    f"{total_weight*100:.0f}%",
+                    "",
+                    f"{total_weighted:.1f}"
+                ])
+                
+                # Create and style the enhanced marks table
+                marks_table = Table(marks_data, colWidths=[1.2*inch, 1.8*inch, 0.6*inch, 0.8*inch, 0.8*inch, 0.6*inch, 0.8*inch])
+                marks_table.setStyle(TableStyle([
+                    # Header row styling
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.darkblue),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, -1), 8),
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('ALIGN', (1, 1), (1, -3), 'LEFT'),  # Assessment descriptions left-aligned
+                    
+                    # Data rows styling
+                    ('BACKGROUND', (0, 1), (-1, -2), colors.white),
+                    ('FONTNAME', (0, 1), (-1, -2), 'Helvetica'),
+                    
+                    # Subtotal rows styling
+                    ('BACKGROUND', (0, -2), (-1, -2), colors.lightgrey),
+                    ('FONTNAME', (0, -2), (-1, -2), 'Helvetica-Oblique'),
+                    
+                    # CASS total row styling
+                    ('BACKGROUND', (0, -1), (-1, -1), colors.lightgreen),
+                    ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, -1), (-1, -1), 9),
+                    
+                    # Grid and padding
+                    ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                    ('TOPPADDING', (0, 0), (-1, -1), 6),
+                ]))
+                
+                story.append(marks_table)
+                story.append(Spacer(1, 15))
+                
+                # CASS Mark and Final Grade Summary
+                story.append(Paragraph("Module Grade Summary", ParagraphStyle(
+                    'SubHeading',
+                    parent=styles['Heading4'],
+                    fontSize=11,
+                    spaceAfter=6,
+                    textColor=colors.darkred
+                )))
+                
+                # Create grade summary table
+                grade_summary_data = [["Component", "Mark (%)", "Weight", "Contribution", "Grade"]]
+                
+                # CASS Mark (50% of final grade)
+                cass_contribution = cass_percentage * 0.5
+                cass_grade = ""
+                if cass_percentage >= 75:
+                    cass_grade = "Distinction"
+                elif cass_percentage >= 65:
+                    cass_grade = "Merit"
+                elif cass_percentage >= 50:
+                    cass_grade = "Pass"
+                else:
+                    cass_grade = "Fail"
+                
+                grade_summary_data.append([
+                    "CASS MARK (Continuous Assessment)",
+                    f"{cass_percentage:.1f}%",
+                    "50%",
+                    f"{cass_contribution:.1f}%",
+                    cass_grade
+                ])
+                
+                # Exam Mark (50% of final grade)
+                exam_percentage = 0
+                exam_contribution = 0
+                exam_grade = "Not Available"
+                
+                if exam_mark and exam_mark.numeric_score is not None:
+                    exam_percentage = (float(exam_mark.numeric_score) / float(exam_mark.max_points)) * 100
+                    exam_contribution = exam_percentage * 0.5
+                    if exam_percentage >= 75:
+                        exam_grade = "Distinction"
+                    elif exam_percentage >= 65:
+                        exam_grade = "Merit"
+                    elif exam_percentage >= 50:
+                        exam_grade = "Pass"
+                    else:
+                        exam_grade = "Fail"
+                
+                grade_summary_data.append([
+                    "EXAM MARK (Final Examination)",
+                    f"{exam_percentage:.1f}%" if exam_mark and exam_mark.numeric_score else "Pending",
+                    "50%",
+                    f"{exam_contribution:.1f}%" if exam_mark and exam_mark.numeric_score else "0.0%",
+                    exam_grade
+                ])
+                
+                # Final Grade Calculation
+                final_percentage = cass_contribution + exam_contribution
+                
+                # Convert to letter grade
+                if exam_mark and exam_mark.numeric_score is not None:
+                    if final_percentage >= 90:
+                        letter_grade = 'A+'
+                    elif final_percentage >= 85:
+                        letter_grade = 'A'
+                    elif final_percentage >= 80:
+                        letter_grade = 'A-'
+                    elif final_percentage >= 77:
+                        letter_grade = 'B+'
+                    elif final_percentage >= 73:
+                        letter_grade = 'B'
+                    elif final_percentage >= 70:
+                        letter_grade = 'B-'
+                    elif final_percentage >= 67:
+                        letter_grade = 'C+'
+                    elif final_percentage >= 63:
+                        letter_grade = 'C'
+                    elif final_percentage >= 60:
+                        letter_grade = 'C-'
+                    elif final_percentage >= 57:
+                        letter_grade = 'D+'
+                    elif final_percentage >= 53:
+                        letter_grade = 'D'
+                    elif final_percentage >= 50:
+                        letter_grade = 'D-'
+                    else:
+                        letter_grade = 'F'
+                    
+                    # Get grade points
+                    grade_points_map = {
+                        'A+': 4.0, 'A': 4.0, 'A-': 3.7,
+                        'B+': 3.3, 'B': 3.0, 'B-': 2.7,
+                        'C+': 2.3, 'C': 2.0, 'C-': 1.7,
+                        'D+': 1.3, 'D': 1.0, 'D-': 0.7,
+                        'F': 0.0, 'I': 0.0, 'W': 0.0
+                    }
+                    grade_points = grade_points_map.get(letter_grade, 0.0)
+                    
+                    grade_summary_data.append([
+                        "FINAL MODULE GRADE",
+                        f"{final_percentage:.1f}%",
+                        "100%",
+                        f"{final_percentage:.1f}%",
+                        f"{letter_grade} ({grade_points:.1f} GP)"
+                    ])
+                else:
+                    grade_summary_data.append([
+                        "FINAL MODULE GRADE",
+                        "Pending Exam",
+                        "100%",
+                        f"CASS: {cass_contribution:.1f}%",
+                        "Incomplete"
+                    ])
+                
+                # Create grade summary table
+                grade_summary_table = Table(grade_summary_data, colWidths=[2.5*inch, 1*inch, 0.8*inch, 1*inch, 1.2*inch])
+                grade_summary_table.setStyle(TableStyle([
+                    # Header row
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.darkblue),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('ALIGN', (0, 1), (0, -1), 'LEFT'),
+                    
+                    # CASS row
+                    ('BACKGROUND', (0, 1), (-1, 1), colors.lightblue),
+                    
+                    # Exam row
+                    ('BACKGROUND', (0, 2), (-1, 2), colors.lightyellow),
+                    
+                    # Final grade row
+                    ('BACKGROUND', (0, 3), (-1, 3), colors.lightgreen),
+                    ('FONTNAME', (0, 3), (-1, 3), 'Helvetica-Bold'),
+                    
+                    ('FONTSIZE', (0, 0), (-1, -1), 9),
+                    ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                    ('TOPPADDING', (0, 0), (-1, -1), 8),
+                ]))
+                
+                story.append(grade_summary_table)
+                story.append(Spacer(1, 20))
+                
+            else:
+                # No coursework grades available - check for stored CASS and Exam marks
+                if cass_mark or exam_mark:
+                    simple_data = [["Component", "Mark", "Weight", "Status"]]
+                    
+                    if cass_mark and cass_mark.numeric_score is not None:
+                        cass_percentage = (float(cass_mark.numeric_score) / float(cass_mark.max_points)) * 100
+                        simple_data.append(["CASS MARK", f"{cass_percentage:.1f}%", "50%", "Completed"])
+                    else:
+                        simple_data.append(["CASS MARK", "Not Available", "50%", "Pending"])
+                    
+                    if exam_mark and exam_mark.numeric_score is not None:
+                        exam_percentage = (float(exam_mark.numeric_score) / float(exam_mark.max_points)) * 100
+                        simple_data.append(["EXAM MARK", f"{exam_percentage:.1f}%", "50%", "Completed"])
+                    else:
+                        simple_data.append(["EXAM MARK", "Not Available", "50%", "Pending"])
+                    
+                    simple_table = Table(simple_data, colWidths=[2.5*inch, 1.5*inch, 1*inch, 1.5*inch])
+                    simple_table.setStyle(TableStyle([
+                        ('BACKGROUND', (0, 0), (-1, 0), colors.lightblue),
+                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                        ('ALIGN', (0, 1), (0, -1), 'LEFT'),
+                        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                    ]))
+                    
+                    story.append(simple_table)
+                    story.append(Spacer(1, 15))
+                else:
+                    story.append(Paragraph("No assessment data available for this module.", styles['Normal']))
+                    story.append(Spacer(1, 10))
+        
+        # Enhanced Semester Summary Table
+        story.append(Paragraph("Semester Academic Summary", heading_style))
+        
+        # Calculate semester totals with enhanced details
+        total_credits = 0
+        total_grade_points = 0
+        total_cass_percentage = 0
+        completed_modules = 0
+        pending_exams = 0
+        
+        summary_data = [["Module Code", "Module Name", "Credits", "CASS Mark", "Exam Mark", "Final Grade", "GPA Points", "Status"]]
+        
+        for course in semester_courses:
+            # Get or calculate final grade
             final_grade = Grade.objects.filter(
                 student=student,
                 course=course,
                 grade_type='final_grade'
             ).first()
             
-            # If no final grade, calculate from all grades
-            if not final_grade:
-                course_grades = Grade.objects.filter(
+            # Get CASS and Exam marks
+            cass_mark = Grade.objects.filter(
+                student=student,
+                course=course,
+                grade_type='cass_mark'
+            ).first()
+            
+            exam_mark = Grade.objects.filter(
+                student=student,
+                course=course,
+                grade_type='exam_mark'
+            ).first()
+            
+            # Calculate CASS mark if not stored directly
+            if not cass_mark:
+                coursework_grades = Grade.objects.filter(
                     student=student,
                     course=course
-                ).exclude(grade_value__in=['I', 'W'])
+                ).exclude(grade_type__in=['final_grade', 'exam_mark', 'cass_mark'])
                 
-                if course_grades.exists():
-                    # Calculate weighted average
+                if coursework_grades.exists():
                     total_weighted = 0
                     total_weight = 0
-                    for grade in course_grades:
+                    for grade in coursework_grades:
                         if grade.numeric_score:
-                            total_weighted += grade.get_percentage() * float(grade.weight)
+                            percentage = (float(grade.numeric_score) / float(grade.max_points)) * 100
+                            total_weighted += percentage * float(grade.weight)
                             total_weight += float(grade.weight)
                     
-                    if total_weight > 0:
-                        avg_percentage = total_weighted / total_weight
-                        # Convert to letter grade
-                        if avg_percentage >= 90:
-                            grade_value = 'A+'
-                        elif avg_percentage >= 85:
-                            grade_value = 'A'
-                        elif avg_percentage >= 80:
-                            grade_value = 'A-'
-                        elif avg_percentage >= 77:
-                            grade_value = 'B+'
-                        elif avg_percentage >= 73:
-                            grade_value = 'B'
-                        elif avg_percentage >= 70:
-                            grade_value = 'B-'
-                        elif avg_percentage >= 67:
-                            grade_value = 'C+'
-                        elif avg_percentage >= 63:
-                            grade_value = 'C'
-                        elif avg_percentage >= 60:
-                            grade_value = 'C-'
-                        elif avg_percentage >= 57:
-                            grade_value = 'D+'
-                        elif avg_percentage >= 53:
-                            grade_value = 'D'
-                        elif avg_percentage >= 50:
-                            grade_value = 'D-'
-                        else:
-                            grade_value = 'F'
-                    else:
-                        grade_value = 'I'
+                    cass_percentage = total_weighted / total_weight if total_weight > 0 else 0
                 else:
-                    grade_value = 'I'
+                    cass_percentage = 0
             else:
-                grade_value = final_grade.grade_value
+                cass_percentage = (float(cass_mark.numeric_score) / float(cass_mark.max_points)) * 100 if cass_mark.numeric_score else 0
+            
+            # Get exam percentage
+            exam_percentage = (float(exam_mark.numeric_score) / float(exam_mark.max_points)) * 100 if exam_mark and exam_mark.numeric_score else 0
+            
+            # Calculate final grade if not stored
+            if not final_grade and exam_mark and exam_mark.numeric_score:
+                final_percentage = (cass_percentage * 0.5) + (exam_percentage * 0.5)
+                
+                # Convert to letter grade
+                if final_percentage >= 90:
+                    grade_value = 'A+'
+                elif final_percentage >= 85:
+                    grade_value = 'A'
+                elif final_percentage >= 80:
+                    grade_value = 'A-'
+                elif final_percentage >= 77:
+                    grade_value = 'B+'
+                elif final_percentage >= 73:
+                    grade_value = 'B'
+                elif final_percentage >= 70:
+                    grade_value = 'B-'
+                elif final_percentage >= 67:
+                    grade_value = 'C+'
+                elif final_percentage >= 63:
+                    grade_value = 'C'
+                elif final_percentage >= 60:
+                    grade_value = 'C-'
+                elif final_percentage >= 57:
+                    grade_value = 'D+'
+                elif final_percentage >= 53:
+                    grade_value = 'D'
+                elif final_percentage >= 50:
+                    grade_value = 'D-'
+                else:
+                    grade_value = 'F'
+            else:
+                grade_value = final_grade.grade_value if final_grade else 'I'
             
             # Get grade points
             grade_points_map = {
@@ -4361,73 +4784,196 @@ def generate_semester_results(request, student_id):
                 'D+': 1.3, 'D': 1.0, 'D-': 0.7,
                 'F': 0.0, 'I': 0.0, 'W': 0.0
             }
-            
             grade_points = grade_points_map.get(grade_value, 0.0)
-            status = "Pass" if grade_value not in ['F', 'I', 'W'] and grade_points >= 1.7 else "Fail"
             
-            course_data.append([
+            # Determine status
+            if exam_mark and exam_mark.numeric_score:
+                status = "Complete"
+                completed_modules += 1
+            else:
+                status = "Awaiting Exam"
+                pending_exams += 1
+            
+            # Add to totals
+            total_credits += course.credits
+            if grade_value not in ['I', 'W']:
+                total_grade_points += grade_points * course.credits
+                total_cass_percentage += cass_percentage
+            
+            summary_data.append([
                 course.course_code,
-                course.course_name[:30] + "..." if len(course.course_name) > 30 else course.course_name,
+                course.course_name[:20] + "..." if len(course.course_name) > 20 else course.course_name,
                 str(course.credits),
+                f"{cass_percentage:.1f}%" if cass_percentage > 0 else "N/A",
+                f"{exam_percentage:.1f}%" if exam_percentage > 0 else "Pending",
                 grade_value,
                 f"{grade_points:.1f}",
                 status
             ])
-            
-            if grade_value not in ['I', 'W']:
-                total_credits += course.credits
-                total_grade_points += grade_points * course.credits
         
         # Calculate semester GPA
         semester_gpa = total_grade_points / total_credits if total_credits > 0 else 0.0
+        average_cass = total_cass_percentage / len(semester_courses) if semester_courses else 0
         
-        # Add summary row
-        course_data.append([
-            "", "SEMESTER TOTALS", str(total_credits), "", f"{semester_gpa:.2f}", ""
+        # Add semester summary rows
+        summary_data.append(["", "", "", "", "", "", "", ""])  # Empty separator row
+        summary_data.append([
+            "SEMESTER TOTALS",
+            f"{len(semester_courses)} Modules",
+            str(total_credits),
+            f"{average_cass:.1f}%",
+            f"{completed_modules}/{len(semester_courses)} Complete",
+            f"GPA: {semester_gpa:.2f}",
+            f"{total_grade_points:.1f}",
+            f"{completed_modules} Done, {pending_exams} Pending"
         ])
         
-        course_table = Table(course_data, colWidths=[1*inch, 2.5*inch, 0.8*inch, 0.8*inch, 0.8*inch, 0.8*inch])
-        course_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        summary_table = Table(summary_data, colWidths=[1*inch, 1.8*inch, 0.6*inch, 0.8*inch, 0.8*inch, 0.8*inch, 0.7*inch, 1.2*inch])
+        summary_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.darkblue),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 9),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-            ('BACKGROUND', (0, 1), (-2, -1), colors.beige),
-            ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('BACKGROUND', (0, 1), (-1, -3), colors.white),
+            ('BACKGROUND', (0, -2), (-1, -2), colors.lightgrey),  # Separator row
+            ('BACKGROUND', (0, -1), (-1, -1), colors.lightgreen),  # Totals row
             ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, -1), (-1, -1), 9),
             ('GRID', (0, 0), (-1, -1), 1, colors.black)
         ]))
         
-        story.append(course_table)
+        story.append(summary_table)
         story.append(Spacer(1, 20))
         
-        # Semester Summary
-        story.append(Paragraph("Semester Summary", heading_style))
-        summary_info = [
-            ["Total Credits Attempted:", str(total_credits)],
-            ["Total Credits Earned:", str(total_credits)],  # Assuming all passed for now
-            ["Semester GPA:", f"{semester_gpa:.2f}"],
-            ["Academic Standing:", "Good Standing" if semester_gpa >= 2.0 else "Academic Warning"]
+        # Enhanced Academic Performance Summary
+        story.append(Paragraph("Academic Performance Analysis", heading_style))
+        
+        # Calculate pass rate and other metrics
+        passing_grades = ['A+', 'A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'C-']
+        passed_courses = sum(1 for course in semester_courses 
+                           if Grade.objects.filter(student=student, course=course, grade_value__in=passing_grades).exists())
+        
+        performance_info = [
+            ["Academic Metric", "Value", "Assessment"],
+            ["Total Credits Registered", str(total_credits), "Full course load" if total_credits >= 15 else "Partial load"],
+            ["Modules with Complete Grades", f"{completed_modules}/{len(semester_courses)}", "On track" if completed_modules > len(semester_courses)/2 else "Behind schedule"],
+            ["Average CASS Performance", f"{average_cass:.1f}%", "Excellent" if average_cass >= 75 else "Good" if average_cass >= 65 else "Needs improvement"],
+            ["Semester GPA", f"{semester_gpa:.2f}", "Excellent" if semester_gpa >= 3.5 else "Good" if semester_gpa >= 3.0 else "Satisfactory" if semester_gpa >= 2.0 else "At Risk"],
+            ["Modules Passed", f"{passed_courses}/{len(semester_courses)}", "Strong performance" if passed_courses == len(semester_courses) else f"{passed_courses} of {len(semester_courses)} completed"],
+            ["Academic Standing", 
+             "Dean's List" if semester_gpa >= 3.75 else "Good Standing" if semester_gpa >= 2.0 else "Academic Probation",
+             "Maintain excellent work" if semester_gpa >= 3.5 else "Keep up good work" if semester_gpa >= 2.0 else "Seek academic support"]
         ]
         
-        summary_table = Table(summary_info, colWidths=[2.5*inch, 2*inch])
-        summary_table.setStyle(TableStyle([
+        performance_table = Table(performance_info, colWidths=[2.5*inch, 1.5*inch, 2.5*inch])
+        performance_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.darkgreen),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
             ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTNAME', (0, 1), (0, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ]))
         
-        story.append(summary_table)
+        story.append(performance_table)
     else:
         story.append(Paragraph("No courses found for the specified semester.", styles['Normal']))
+        story.append(Spacer(1, 20))
+        story.append(Paragraph("This may indicate that:", styles['Normal']))
+        story.append(Paragraph("• You were not enrolled in any courses for this semester", styles['Normal']))
+        story.append(Paragraph("• The course data has not been uploaded to the system", styles['Normal']))
+        story.append(Paragraph("• There may be a system error - please contact academic administration", styles['Normal']))
+        
+        # Show available courses for troubleshooting
+        all_courses = Course.objects.filter(enrollments__student=student, enrollments__status='enrolled').distinct()
+        if all_courses.exists():
+            story.append(Spacer(1, 15))
+            story.append(Paragraph("Your current enrolled courses:", styles['Normal']))
+            for course in all_courses:
+                course_semester_display = 'First Semester' if course.semester == '1' else \
+                                        'Second Semester' if course.semester == '2' else \
+                                        'Summer Session' if course.semester == '3' else \
+                                        course.get_semester_display()
+                story.append(Paragraph(f"• {course.course_code} - {course.course_name} ({course_semester_display} {course.year})", styles['Normal']))
+    
+    # Add grading scale information
+    story.append(Spacer(1, 30))
+    story.append(Paragraph("Grading Scale & Information", heading_style))
+    
+    # Grading scale table
+    grading_scale_data = [
+        ["Letter Grade", "Percentage Range", "GPA Points", "Description"],
+        ["A+", "90-100%", "4.0", "Outstanding"],
+        ["A", "85-89%", "4.0", "Excellent"],
+        ["A-", "80-84%", "3.7", "Very Good"],
+        ["B+", "77-79%", "3.3", "Good"],
+        ["B", "73-76%", "3.0", "Above Average"],
+        ["B-", "70-72%", "2.7", "Average"],
+        ["C+", "67-69%", "2.3", "Below Average"],
+        ["C", "63-66%", "2.0", "Satisfactory"],
+        ["C-", "60-62%", "1.7", "Marginal Pass"],
+        ["D+", "57-59%", "1.3", "Poor"],
+        ["D", "53-56%", "1.0", "Very Poor"],
+        ["D-", "50-52%", "0.7", "Minimal Pass"],
+        ["F", "0-49%", "0.0", "Fail"]
+    ]
+    
+    grading_scale_table = Table(grading_scale_data, colWidths=[1*inch, 1.5*inch, 1*inch, 1.5*inch])
+    grading_scale_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.darkblue),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+    ]))
+    
+    story.append(grading_scale_table)
+    story.append(Spacer(1, 15))
+    
+    # Assessment information
+    assessment_info_style = ParagraphStyle(
+        'AssessmentInfo',
+        parent=styles['Normal'],
+        fontSize=9,
+        textColor=colors.darkblue
+    )
+    
+    story.append(Paragraph("Assessment Components:", assessment_info_style))
+    story.append(Paragraph("• CASS MARK (Continuous Assessment): 50% - Includes assignments, quizzes, tests, projects, and participation", assessment_info_style))
+    story.append(Paragraph("• EXAM MARK (Final Examination): 50% - End-of-semester written examination", assessment_info_style))
+    story.append(Paragraph("• Final Module Grade: Calculated as (CASS MARK × 0.5) + (EXAM MARK × 0.5)", assessment_info_style))
+    story.append(Spacer(1, 10))
+    
+    story.append(Paragraph("Notes:", assessment_info_style))
+    story.append(Paragraph("• A minimum of 40% is required in both CASS and Exam components to pass a module", assessment_info_style))
+    story.append(Paragraph("• Students must achieve an overall minimum of 50% to pass a module", assessment_info_style))
+    story.append(Paragraph("• GPA calculation is based on credit-weighted grade points", assessment_info_style))
+    story.append(Paragraph("• This transcript is an official academic record", assessment_info_style))
     
     # Footer
     story.append(Spacer(1, 30))
-    footer_text = f"Results slip generated on {datetime.now().strftime('%B %d, %Y')} by {request.user.get_full_name() or request.user.username}"
-    story.append(Paragraph(footer_text, styles['Normal']))
+    footer_text = f"Official Semester Results Slip generated on {datetime.now().strftime('%B %d, %Y at %I:%M %p')} | Generated by: {request.user.get_full_name() or request.user.username} | Document ID: SEM-{student.username}-{semester.upper()}-{year}"
+    
+    footer_style = ParagraphStyle(
+        'Footer',
+        parent=styles['Normal'],
+        fontSize=8,
+        textColor=colors.grey,
+        alignment=TA_CENTER
+    )
+    
+    story.append(Paragraph(footer_text, footer_style))
     
     # Build the PDF
     doc.build(story)
@@ -5311,3 +5857,162 @@ def generate_full_transcript(request, student_id):
     doc.build(story)
     
     return response
+
+@login_required
+def manage_exam_marks(request):
+    """Manage exam marks for students (lecturer only)"""
+    try:
+        if request.user.userprofile.user_type != 'lecturer':
+            messages.error(request, 'Access denied. Lecturer access required.')
+            return redirect('dashboard')
+    except UserProfile.DoesNotExist:
+        messages.error(request, 'User profile not found.')
+        return redirect('dashboard')
+    
+    # Get lecturer's courses
+    courses = Course.objects.filter(lecturer=request.user.userprofile, is_active=True)
+    
+    # Get selected course from query parameters
+    course_id = request.GET.get('course')
+    selected_course = None
+    students_data = []
+    
+    if course_id:
+        try:
+            selected_course = Course.objects.get(id=course_id, lecturer=request.user.userprofile)
+            
+            # Get all enrolled students
+            enrolled_students = User.objects.filter(
+                enrollments__course=selected_course,
+                enrollments__status='enrolled',
+                userprofile__user_type='student'
+            ).distinct()
+            
+            for student in enrolled_students:
+                # Get final mark details
+                final_mark_details = selected_course.get_final_mark_details(student)
+                
+                # Get existing exam mark
+                exam_grade = Grade.objects.filter(
+                    student=student,
+                    course=selected_course,
+                    grade_type='exam_mark'
+                ).first()
+                
+                students_data.append({
+                    'student': student,
+                    'cass_mark': final_mark_details['cass_mark'],
+                    'exam_mark': final_mark_details['exam_mark'],
+                    'final_mark': final_mark_details['final_mark'],
+                    'letter_grade': final_mark_details['letter_grade'],
+                    'is_passing': final_mark_details['is_passing'],
+                    'exam_grade_id': exam_grade.id if exam_grade else None
+                })
+                
+        except Course.DoesNotExist:
+            messages.error(request, 'Course not found.')
+            return redirect('manage_exam_marks')
+    
+    # Handle exam mark submission
+    if request.method == 'POST':
+        student_id = request.POST.get('student_id')
+        exam_score = request.POST.get('exam_score')
+        
+        try:
+            student = User.objects.get(id=student_id, userprofile__user_type='student')
+            exam_score = float(exam_score)
+            
+            if not (0 <= exam_score <= 100):
+                messages.error(request, 'Exam score must be between 0 and 100.')
+                return redirect(f'/lecturer/grades/exam-marks/?course={course_id}')
+            
+            # Create or update exam mark
+            exam_grade, created = Grade.objects.update_or_create(
+                student=student,
+                course=selected_course,
+                grade_type='exam_mark',
+                defaults={
+                    'numeric_score': exam_score,
+                    'max_points': 100,
+                    'weight': 0.5,  # 50% weight
+                    'description': 'Final Examination',
+                    'comments': f'Exam mark entered by {request.user.get_full_name() or request.user.username}'
+                }
+            )
+            
+            # Update CASS mark if not exists
+            cass_mark_percentage = selected_course.calculate_cass_mark(student)
+            if cass_mark_percentage is not None:
+                Grade.objects.update_or_create(
+                    student=student,
+                    course=selected_course,
+                    grade_type='cass_mark',
+                    defaults={
+                        'numeric_score': cass_mark_percentage,
+                        'max_points': 100,
+                        'weight': 0.5,  # 50% weight
+                        'description': 'Continuous Assessment (CASS) Mark',
+                        'comments': f'CASS mark calculated from coursework'
+                    }
+                )
+            
+            # Calculate and create final grade
+            final_mark, cass_mark, exam_mark = selected_course.calculate_final_mark(student)
+            if final_mark is not None:
+                # Convert to letter grade
+                if final_mark >= 90:
+                    letter_grade = 'A+'
+                elif final_mark >= 85:
+                    letter_grade = 'A'
+                elif final_mark >= 80:
+                    letter_grade = 'A-'
+                elif final_mark >= 77:
+                    letter_grade = 'B+'
+                elif final_mark >= 73:
+                    letter_grade = 'B'
+                elif final_mark >= 70:
+                    letter_grade = 'B-'
+                elif final_mark >= 67:
+                    letter_grade = 'C+'
+                elif final_mark >= 63:
+                    letter_grade = 'C'
+                elif final_mark >= 60:
+                    letter_grade = 'C-'
+                elif final_mark >= 57:
+                    letter_grade = 'D+'
+                elif final_mark >= 53:
+                    letter_grade = 'D'
+                elif final_mark >= 50:
+                    letter_grade = 'D-'
+                else:
+                    letter_grade = 'F'
+                
+                Grade.objects.update_or_create(
+                    student=student,
+                    course=selected_course,
+                    grade_type='final_grade',
+                    defaults={
+                        'grade_value': letter_grade,
+                        'numeric_score': final_mark,
+                        'max_points': 100,
+                        'weight': 1.0,
+                        'description': 'Final Course Grade',
+                        'comments': f'Final grade: CASS ({cass_mark}%) + Exam ({exam_mark}%) = {final_mark}%'
+                    }
+                )
+            
+            action = "updated" if not created else "added"
+            messages.success(request, f'Exam mark {action} successfully for {student.get_full_name() or student.username}.')
+            
+        except (User.DoesNotExist, ValueError) as e:
+            messages.error(request, f'Error updating exam mark: {str(e)}')
+        
+        return redirect(f'/lecturer/grades/exam-marks/?course={course_id}')
+    
+    context = {
+        'courses': courses,
+        'selected_course': selected_course,
+        'students_data': students_data,
+    }
+    
+    return render(request, 'MainInterface/manage_exam_marks.html', context)
